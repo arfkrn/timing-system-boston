@@ -45,7 +45,8 @@ namespace boston_timing_system.Models
         public bool HasResults => Lanes.Any(l => 
             (l.Status == LaneStatus.Finished && (l.FinishTime.HasValue || (!string.IsNullOrEmpty(l.FormattedTime) && l.FormattedTime != "00.00.00"))) ||
             l.Status == LaneStatus.DQ || 
-            l.Status == LaneStatus.DNF);
+            l.Status == LaneStatus.DNF ||
+            l.Status == LaneStatus.DNS);
 
         public ObservableCollection<LaneModel> Lanes { get; set; } = new();
 

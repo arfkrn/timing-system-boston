@@ -424,9 +424,14 @@ namespace boston_timing_system.Core
 
                 if (_currentHeat != null)
                 {
-                    var matchedLane = _currentHeat.Lanes.FirstOrDefault(l => 
-                        l.BibNumber.Equals(defaultBib, StringComparison.OrdinalIgnoreCase) || 
-                        l.LaneNumber.ToString() == defaultBib);
+                    // Use strict matching: prefer lanes with explicit BibNumber set,
+                    // only fall back to LaneNumber matching for lanes without an explicit bib.
+                    // This prevents ambiguous double-match when a LaneNumber coincidentally
+                    // equals another participant's explicit BibNumber.
+                    var matchedLane = _currentHeat.Lanes.FirstOrDefault(l =>
+                        l.HasExplicitBibNumber
+                            ? l.BibNumber.Equals(defaultBib, StringComparison.OrdinalIgnoreCase)
+                            : l.LaneNumber.ToString() == defaultBib);
 
                     if (matchedLane != null)
                     {
@@ -647,7 +652,12 @@ namespace boston_timing_system.Core
                 {
                     foreach (var record in OwsRecords)
                     {
-                        var targetLane = heat.Lanes.FirstOrDefault(l => l.BibNumber.Equals(record.BibNumber, StringComparison.OrdinalIgnoreCase));
+                        // Use the same strict-matching strategy: explicit bib takes precedence,
+                        // fall back to LaneNumber only when no explicit bib is assigned.
+                        var targetLane = heat.Lanes.FirstOrDefault(l =>
+                            l.HasExplicitBibNumber
+                                ? l.BibNumber.Equals(record.BibNumber, StringComparison.OrdinalIgnoreCase)
+                                : l.LaneNumber.ToString() == record.BibNumber);
                         if (targetLane != null)
                         {
                             targetLane.Status = LaneStatus.Finished;

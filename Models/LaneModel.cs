@@ -39,6 +39,12 @@ namespace boston_timing_system.Models
             set => SetProperty(ref _bibNumber, value);
         }
 
+        /// <summary>
+        /// Returns true only if a BibNumber was explicitly set (not just inferred from LaneNumber).
+        /// Used to prevent ambiguous matching in OWS mode when multiple lanes share the same fallback bib.
+        /// </summary>
+        public bool HasExplicitBibNumber => !string.IsNullOrWhiteSpace(_bibNumber);
+
         public string SwimmerName
         {
             get => _swimmerName;

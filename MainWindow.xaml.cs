@@ -64,8 +64,8 @@ namespace boston_timing_system
                 AddLogMessage($"[OWS FINISH] #{rec.Rank} {rec.FormattedTime} (Bib {rec.BibNumber} {rec.SwimmerName})");
             });
 
-            // 2. Initialize and start WebSocket server
-            _wsServer = new TimingWebSocketServer(_engine, port: 8181);
+            // 2. Initialize WebSocket server with port fallback (tries 8181 → 8182 → 8183 → 8080)
+            _wsServer = new TimingWebSocketServer(_engine, candidatePorts: new[] { 8181, 8182, 8183, 8080 });
             _wsServer.LogReceived += HandleServerLogReceived;
 
             try
@@ -74,10 +74,21 @@ namespace boston_timing_system
             }
             catch (Exception ex)
             {
-                AddLogMessage($"Failed to start WebSocket server: {ex.Message}");
+                AddLogMessage($"[CRITICAL] WebSocket server failed on all ports: {ex.Message}");
+                MessageBox.Show(
+                    $"WebSocket server tidak dapat dijalankan di port manapun (8181, 8182, 8183, 8080).\n\n" +
+                    $"Kemungkinan penyebab:\n" +
+                    $"  • Port sedang digunakan oleh aplikasi lain\n" +
+                    $"  • Firewall memblokir semua port tersebut\n\n" +
+                    $"Detail error: {ex.Message}\n\n" +
+                    $"Perangkat mobile tidak akan dapat terhubung. " +
+                    $"Coba tutup aplikasi lain yang mungkin menggunakan port tersebut, lalu restart aplikasi ini.",
+                    "WebSocket Server Gagal",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
 
-            // Footer access info
+            // Footer access info — update after Start() so Port reflects the actual bound port
             txtAccessIp.Text = _wsServer.LocalIpAddress;
             txtAccessCode.Text = _wsServer.AccessCode;
             txtAccessScoreboard.Text = $"{_wsServer.LocalIpAddress}:3000/scoreboard.html";

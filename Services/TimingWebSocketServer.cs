@@ -35,7 +35,7 @@ namespace boston_timing_system.Services
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
 
-        public int Port { get; }
+        public int Port { get; private set; }
         public string LocalIpAddress { get; }
         public string ServerUri => $"ws://{LocalIpAddress}:{Port}";
         public bool IsRunning
@@ -115,10 +115,16 @@ namespace boston_timing_system.Services
 
         public event Action<string>? LogReceived;
 
+        private readonly int[] _candidatePorts;
+
         public TimingWebSocketServer(RaceTimingEngine engine, int port = 8181)
+            : this(engine, new[] { port }) { }
+
+        public TimingWebSocketServer(RaceTimingEngine engine, int[] candidatePorts)
         {
             _engine = engine;
-            Port = port;
+            _candidatePorts = candidatePorts.Length > 0 ? candidatePorts : new[] { 8181 };
+            Port = _candidatePorts[0]; // provisional; updated in Start() to the actual bound port
             LocalIpAddress = NetworkHelper.GetLocalIpAddress();
             AccessCode = GenerateRandomAccessCode();
 
@@ -134,37 +140,64 @@ namespace boston_timing_system.Services
             _engine.OwsFinishRecorded += HandleEngineOwsFinishRecorded;
         }
 
-        public void Start()
+        /// <summary>
+        /// Tries to start the WebSocket server, cycling through <see cref="_candidatePorts"/> until
+        /// one succeeds. Returns true on success, false if every candidate port is unavailable.
+        /// </summary>
+        public bool Start()
         {
             lock (_syncLock)
             {
                 if (IsRunning)
                 {
-                    return;
+                    return true;
                 }
 
                 FleckLog.LogAction = (level, message, ex) =>
                 {
-                    // Filter or redirect internal Fleck logs if needed
+                    // Suppress Fleck internal log noise
                 };
 
-                _server = new WebSocketServer($"ws://0.0.0.0:{Port}")
-                {
-                    RestartAfterListenError = true
-                };
+                Exception? lastException = null;
 
-                _server.Start(socket =>
+                foreach (int candidatePort in _candidatePorts)
                 {
-                    socket.OnOpen = () => HandleSocketOpen(socket);
-                    socket.OnClose = () => HandleSocketClose(socket);
-                    socket.OnMessage = message => HandleSocketMessage(socket, message);
-                    socket.OnError = ex => HandleSocketError(socket, ex);
-                });
+                    try
+                    {
+                        var server = new WebSocketServer($"ws://0.0.0.0:{candidatePort}")
+                        {
+                            RestartAfterListenError = false
+                        };
 
-                IsRunning = true;
-                _heartbeatWatchdogTimer?.Dispose();
-                _heartbeatWatchdogTimer = new Timer(CheckHeartbeats, null, 1000, 1000);
-                Log($"WebSocket Server listening on {ServerUri}");
+                        server.Start(socket =>
+                        {
+                            socket.OnOpen = () => HandleSocketOpen(socket);
+                            socket.OnClose = () => HandleSocketClose(socket);
+                            socket.OnMessage = message => HandleSocketMessage(socket, message);
+                            socket.OnError = ex => HandleSocketError(socket, ex);
+                        });
+
+                        // Reached here — port is available and server is listening
+                        _server = server;
+                        Port = candidatePort;
+                        IsRunning = true;
+                        _heartbeatWatchdogTimer?.Dispose();
+                        _heartbeatWatchdogTimer = new Timer(CheckHeartbeats, null, 1000, 1000);
+                        Log($"WebSocket Server listening on {ServerUri}");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        lastException = ex;
+                        Log($"[PORT UNAVAILABLE] Port {candidatePort} failed: {ex.Message}. Trying next port...");
+                    }
+                }
+
+                // All ports exhausted
+                Log($"[ERROR] All candidate ports failed. Last error: {lastException?.Message}");
+                throw new InvalidOperationException(
+                    $"WebSocket server could not bind to any of the candidate ports [{string.Join(", ", _candidatePorts)}]. " +
+                    $"Last error: {lastException?.Message}", lastException);
             }
         }
 
