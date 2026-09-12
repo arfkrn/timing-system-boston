@@ -1,0 +1,74 @@
+# ============================================
+# .NET / C# / Visual Studio & VS Code .gitignore
+# Boston Timing System (WPF Desktop App)
+# ============================================
+
+# Build Results & Artifacts
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Ll]og/
+[Ll]ogs/
+publish/
+
+# Visual Studio Cache & Options
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+*.userprefs
+*.ide/
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# User-specific / Local Configuration
+*.userprofile
+*.docstates
+*.rsuser
+
+# Test & Benchmark Results
+[Tt]est[Rr]esult*
+[Bb]uild[Ll]og.*
+BenchmarkDotNet.Artifacts/
+
+# Generated XAML and Assembly Cache Files
+*_MarkupCompile.cache
+*_MarkupCompile.i.cache
+*_MarkupCompile.lref
+*_MarkupCompile.i.lref
+
+# Crash Dumps and Temporary Files
+*.dmp
+*.stackdump
+*.log
+*.tmp
+*.temp
+*.bak
+
+# Windows OS Files
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# macOS Files
+.DS_Store
