@@ -14,20 +14,45 @@ namespace boston_timing_system.Views
     public partial class MeetManagerWindow : Window
     {
         private readonly ExcelMeetDataService _excelService;
+        private readonly TimingMode _timingMode;
         public CompetitionMeetModel Meet { get; private set; }
 
         private RaceEventModel? _selectedEvent;
         private HeatModel? _selectedHeat;
         private bool _isUpdatingUi;
 
-        public MeetManagerWindow(CompetitionMeetModel currentMeet, ExcelMeetDataService excelService)
+        public MeetManagerWindow(CompetitionMeetModel currentMeet, ExcelMeetDataService excelService, TimingMode timingMode = TimingMode.Pool)
         {
             InitializeComponent();
 
+            _timingMode = timingMode;
             Meet = currentMeet ?? new CompetitionMeetModel();
             _excelService = excelService ?? new ExcelMeetDataService();
 
+            ConfigureModeUi();
             BindMeetData();
+        }
+
+        private void ConfigureModeUi()
+        {
+            if (_timingMode == TimingMode.OpenWater)
+            {
+                Title = "Open Water Swimming Meet & Data Manager";
+                txtMeetHeaderSubtitle.Text = "OWS Event Management";
+                btnAddNewOwsSwimmer.Visibility = Visibility.Visible;
+                colLaneOrBib.Header = "BIB";
+                colLaneOrBib.IsReadOnly = false;
+                colLaneOrBib.Width = new DataGridLength(65);
+            }
+            else
+            {
+                Title = "Swimming Meet & Data Manager";
+                txtMeetHeaderSubtitle.Text = "Pool Event Management";
+                btnAddNewOwsSwimmer.Visibility = Visibility.Collapsed;
+                colLaneOrBib.Header = "LN";
+                colLaneOrBib.IsReadOnly = true;
+                colLaneOrBib.Width = new DataGridLength(46);
+            }
         }
 
         private void BindMeetData()
@@ -59,7 +84,7 @@ namespace boston_timing_system.Views
                 txtEventName.IsEnabled = true;
                 btnClearHeat.IsEnabled = true;
 
-                txtSelectedHeatTitle.Text = $"{parentEvent.DisplayTitle} - {heat.DisplayTitle}";
+                txtSelectedHeatTitle.Text = $"{heat.DisplayTitle}";
                 UpdateSelectedHeatSubtitle();
 
                 dgHeatLanes.ItemsSource = heat.Lanes;
@@ -88,7 +113,7 @@ namespace boston_timing_system.Views
                 if (_selectedHeat != null)
                 {
                     btnClearHeat.IsEnabled = true;
-                    txtSelectedHeatTitle.Text = $"{raceEvent.DisplayTitle} - {_selectedHeat.DisplayTitle}";
+                    txtSelectedHeatTitle.Text = $"{_selectedHeat.DisplayTitle}";
                     UpdateSelectedHeatSubtitle();
                     dgHeatLanes.ItemsSource = _selectedHeat.Lanes;
                     Meet.SelectedEvent = raceEvent;
@@ -97,8 +122,8 @@ namespace boston_timing_system.Views
                 else
                 {
                     btnClearHeat.IsEnabled = false;
-                    txtSelectedHeatTitle.Text = $"{raceEvent.DisplayTitle} (Belum ada Heat)";
-                    txtSelectedHeatSubtitle.Text = "Klik tombol '+ Heat' untuk menambahkan heat baru.";
+                    txtSelectedHeatTitle.Text = $"{raceEvent.DisplayTitle} (No Heat yet)";
+                    txtSelectedHeatSubtitle.Text = "Click the 'New Heat' button to add a new heat.";
                     dgHeatLanes.ItemsSource = null;
                     Meet.SelectedEvent = raceEvent;
                     Meet.SelectedHeat = null;
@@ -139,8 +164,8 @@ namespace boston_timing_system.Views
                     txtEventNumber.IsEnabled = false;
                     txtEventName.IsEnabled = false;
                     btnClearHeat.IsEnabled = false;
-                    txtSelectedHeatTitle.Text = "Tidak ada event yang terdaftar";
-                    txtSelectedHeatSubtitle.Text = "Klik tombol '+ Event' untuk membuat nomor perlombaan baru.";
+                    txtSelectedHeatTitle.Text = "No events listed.";
+                    txtSelectedHeatSubtitle.Text = "Click the 'New Event' button to create a new competition event.";
                     dgHeatLanes.ItemsSource = null;
                 }
                 finally
@@ -155,7 +180,14 @@ namespace boston_timing_system.Views
             if (_selectedHeat != null)
             {
                 int swimmerCount = _selectedHeat.Lanes.Count(l => l.Status != LaneStatus.OFF && !string.IsNullOrWhiteSpace(l.SwimmerName));
-                txtSelectedHeatSubtitle.Text = $"{swimmerCount} Atlet aktif dari 10 Lintasan";
+                if (_timingMode == TimingMode.OpenWater)
+                {
+                    txtSelectedHeatSubtitle.Text = $"{swimmerCount} Active athlete from {_selectedHeat.Lanes.Count} Registered participants";
+                }
+                else
+                {
+                    txtSelectedHeatSubtitle.Text = $"{swimmerCount} Active athletes from 10 tracks";
+                }
             }
             else
             {
@@ -182,7 +214,11 @@ namespace boston_timing_system.Views
         private void BtnAddEvent_Click(object sender, RoutedEventArgs e)
         {
             int nextNum = Meet.Events.Count > 0 ? Meet.Events.Max(ev => ev.EventNumber) + 1 : 1;
-            var newEvent = Meet.AddEvent(nextNum, $"Event Baru #{nextNum:D2}");
+            var newEvent = Meet.AddEvent(nextNum, $"New Event #{nextNum:D2}");
+            if (_timingMode == TimingMode.OpenWater && newEvent.Heats.Count > 0)
+            {
+                newEvent.Heats[0].Lanes.Clear();
+            }
             SelectHeat(newEvent.Heats[0], newEvent);
         }
 
@@ -196,13 +232,49 @@ namespace boston_timing_system.Views
                 }
                 else
                 {
-                    MessageBox.Show("Silakan buat Event terlebih dahulu dengan tombol '+ Event'.", "Informasi", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Please create an event first using the 'New Event' button.", "Informasi", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
             }
 
             var newHeat = _selectedEvent.AddHeat();
+            if (_timingMode == TimingMode.OpenWater)
+            {
+                newHeat.Lanes.Clear();
+            }
             SelectHeat(newHeat, _selectedEvent);
+        }
+
+        private void BtnAddNewOwsSwimmer_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedHeat == null)
+            {
+                MessageBox.Show("Please select Event and Heat first before adding participants.", 
+                    "Select Heat", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            int nextNum = _selectedHeat.Lanes.Count + 1;
+            int suggestedBib = nextNum;
+            var validBibs = _selectedHeat.Lanes
+                .Select(l => int.TryParse(l.BibNumber, out int b) ? b : 0)
+                .Where(b => b > 0)
+                .ToList();
+            if (validBibs.Count > 0)
+            {
+                suggestedBib = validBibs.Max() + 1;
+            }
+
+            var newLane = new LaneModel
+            {
+                LaneNumber = nextNum,
+                BibNumber = suggestedBib.ToString(),
+                SwimmerName = $"Swimmer {suggestedBib}",
+                Status = LaneStatus.Ready
+            };
+
+            _selectedHeat.Lanes.Add(newLane);
+            UpdateSelectedHeatSubtitle();
         }
 
         private void BtnDeleteSelected_Click(object sender, RoutedEventArgs e)
@@ -216,8 +288,8 @@ namespace boston_timing_system.Views
                     if (parentEvent.Heats.Count <= 1)
                     {
                         var result = MessageBox.Show(
-                            $"Heat ini adalah satu-satunya heat pada {parentEvent.DisplayTitle}.\nMenghapusnya akan menghapus seluruh event.\n\nLanjutkan hapus Event?",
-                            "Konfirmasi Hapus",
+                            $"This heat is the only heat on {parentEvent.DisplayTitle}.\nDeleting it will delete the entire event.\n\nProceed to delete the event?",
+                            "Confirm Deletion",
                             MessageBoxButton.YesNo,
                             MessageBoxImage.Question);
 
@@ -230,8 +302,8 @@ namespace boston_timing_system.Views
                     else
                     {
                         var result = MessageBox.Show(
-                            $"Hapus {heat.DisplayTitle} dari {parentEvent.DisplayTitle}?",
-                            "Konfirmasi Hapus Heat",
+                            $"Delete {heat.DisplayTitle} from {parentEvent.DisplayTitle}?",
+                            "Confirm Heat Deletion",
                             MessageBoxButton.YesNo,
                             MessageBoxImage.Question);
 
@@ -253,8 +325,8 @@ namespace boston_timing_system.Views
             else if (selectedItem is RaceEventModel raceEvent)
             {
                 var result = MessageBox.Show(
-                    $"Hapus {raceEvent.DisplayTitle} beserta seluruh heat dan atlet di dalamnya?",
-                    "Konfirmasi Hapus Event",
+                    $"Delete {raceEvent.DisplayTitle} along with all the heats and athletes in them?",
+                    "Confirm Event Deletion",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
 
@@ -266,7 +338,7 @@ namespace boston_timing_system.Views
             }
             else
             {
-                MessageBox.Show("Silakan pilih Event atau Heat dari daftar di sebelah kiri untuk dihapus.", "Pilih Item", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("Please select an Event or Heat from the list on the left to delete.", "Pilih Item", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -279,7 +351,7 @@ namespace boston_timing_system.Views
                 _selectedEvent.EventNumber = newNum;
                 if (_selectedHeat != null)
                 {
-                    txtSelectedHeatTitle.Text = $"{_selectedEvent.DisplayTitle} - {_selectedHeat.DisplayTitle}";
+                    txtSelectedHeatTitle.Text = $"{_selectedHeat.DisplayTitle}";
                 }
             }
         }
@@ -291,7 +363,7 @@ namespace boston_timing_system.Views
             _selectedEvent.EventName = txtEventName.Text.Trim();
             if (_selectedHeat != null)
             {
-                txtSelectedHeatTitle.Text = $"{_selectedEvent.DisplayTitle} - {_selectedHeat.DisplayTitle}";
+                txtSelectedHeatTitle.Text = $"{_selectedHeat.DisplayTitle}";
             }
         }
 
@@ -299,15 +371,26 @@ namespace boston_timing_system.Views
         {
             if (_selectedHeat == null) return;
 
+            string confirmMsg = _timingMode == TimingMode.OpenWater
+                ? $"Remove all participants from {_selectedHeat.DisplayTitle}?"
+                : $"Empty all athletes on {_selectedHeat.DisplayTitle}?";
+
             var result = MessageBox.Show(
-                $"Kosongkan seluruh atlet pada {_selectedHeat.DisplayTitle}?",
-                "Konfirmasi Kosongkan Heat",
+                confirmMsg,
+                "Konfirmasi",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
 
             if (result == MessageBoxResult.Yes)
             {
-                _selectedHeat.ClearSwimmers();
+                if (_timingMode == TimingMode.OpenWater)
+                {
+                    _selectedHeat.Lanes.Clear();
+                }
+                else
+                {
+                    _selectedHeat.ClearSwimmers();
+                }
                 UpdateSelectedHeatSubtitle();
             }
         }
@@ -341,6 +424,13 @@ namespace boston_timing_system.Views
         {
             if (sender is FrameworkElement fe && fe.DataContext is LaneModel lane)
             {
+                if (_timingMode == TimingMode.OpenWater && _selectedHeat != null)
+                {
+                    _selectedHeat.Lanes.Remove(lane);
+                    UpdateSelectedHeatSubtitle();
+                    return;
+                }
+
                 lane.SwimmerName = string.Empty;
                 lane.Club = string.Empty;
                 lane.SeedTime = string.Empty;
@@ -358,7 +448,9 @@ namespace boston_timing_system.Views
             var dialog = new OpenFileDialog
             {
                 Filter = "Excel Workbook (*.xlsx)|*.xlsx",
-                Title = "Import Swimming Meet Start List"
+                Title = _timingMode == TimingMode.OpenWater 
+                    ? "Import Open Water Swimming Start List" 
+                    : "Import Swimming Meet Start List"
             };
 
             if (dialog.ShowDialog() == true)
@@ -367,18 +459,32 @@ namespace boston_timing_system.Views
                 Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
                 try
                 {
-                    var importedMeet = await System.Threading.Tasks.Task.Run(() => _excelService.ImportMeetFromExcel(dialog.FileName));
+                    var importedMeet = await System.Threading.Tasks.Task.Run(() => _excelService.ImportMeetFromExcel(dialog.FileName, _timingMode));
                     Meet = importedMeet;
 
                     BindMeetData();
 
-                    MessageBox.Show($"Start list imported successfully!\n\nEvents: {Meet.Events.Count}\nTotal Heats: {Meet.Events.Sum(ev => ev.Heats.Count)}",
+                    int totalParticipants = Meet.Events.SelectMany(ev => ev.Heats).SelectMany(h => h.Lanes).Count(l => !string.IsNullOrWhiteSpace(l.SwimmerName));
+                    string participantLabel = _timingMode == TimingMode.OpenWater ? "BIB Participants" : "Athlete";
+
+                    MessageBox.Show($"Start list imported successfully!\n\nEvents: {Meet.Events.Count}\nTotal Heats: {Meet.Events.Sum(ev => ev.Heats.Count)}\nTotal {participantLabel}: {totalParticipants}",
                         "Import Successful", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to import Excel file:\n\n{ex.Message}", 
-                        "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    if (IsFileLockedException(ex))
+                    {
+                        MessageBox.Show(
+                            $"File '{System.IO.Path.GetFileName(dialog.FileName)}' It is currently open in another program. \n\nPlease close the file in the other program first, then try again.",
+                            "The Excel file is currently open.",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Failed to import Excel file:\n\n{ex.Message}", 
+                            "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
                 }
                 finally
                 {
@@ -393,8 +499,12 @@ namespace boston_timing_system.Views
             var dialog = new SaveFileDialog
             {
                 Filter = "Excel Workbook (*.xlsx)|*.xlsx",
-                FileName = "Swimming_StartList_Template.xlsx",
-                Title = "Download Start List Template"
+                FileName = _timingMode == TimingMode.OpenWater 
+                    ? "OWS_StartList_Template.xlsx" 
+                    : "Swimming_StartList_Template.xlsx",
+                Title = _timingMode == TimingMode.OpenWater
+                    ? "Download Template Start List Open Water Swimming (BIB)"
+                    : "Download Start List Template"
             };
 
             if (dialog.ShowDialog() == true)
@@ -403,13 +513,24 @@ namespace boston_timing_system.Views
                 Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
                 try
                 {
-                    await System.Threading.Tasks.Task.Run(() => _excelService.GenerateSampleTemplate(dialog.FileName));
+                    await System.Threading.Tasks.Task.Run(() => _excelService.GenerateSampleTemplate(dialog.FileName, _timingMode));
                     MessageBox.Show($"Excel template saved successfully to:\n{dialog.FileName}\n\nYou can fill in your meet data and import it anytime.", 
                         "Template Created", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to create template:\n{ex.Message}", "Template Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    if (IsFileLockedException(ex))
+                    {
+                        MessageBox.Show(
+                            $"File '{System.IO.Path.GetFileName(dialog.FileName)}' It is currently open in another program.\n\nPlease close the file in the other program first, or save it with a different filename.",
+                            "The Excel file is currently open.",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Failed to create template:\n{ex.Message}", "Template Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
                 }
                 finally
                 {
@@ -419,11 +540,23 @@ namespace boston_timing_system.Views
             }
         }
 
+        private static bool IsFileLockedException(Exception ex)
+        {
+            if (ex is IOException ioEx)
+            {
+                int hr = ioEx.HResult & 0xFFFF;
+                return hr == 32 || hr == 33 
+                    || ioEx.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase)
+                    || ioEx.Message.Contains("digunakan oleh proses lain", StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
+        }
+
         private void BtnExportResults_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                var exportDialog = new ExportSelectionDialog(Meet, _excelService)
+                var exportDialog = new ExportSelectionDialog(Meet, _excelService, _timingMode)
                 {
                     Owner = this
                 };
@@ -432,7 +565,7 @@ namespace boston_timing_system.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Gagal membuka dialog ekspor hasil:\n\n{ex.Message}", "Error Ekspor", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Failed to open the result export dialog.:\n\n{ex.Message}", "Error Ekspor", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -448,6 +581,11 @@ namespace boston_timing_system.Views
         {
             DialogResult = false;
             Close();
+        }
+
+        private void dgHeatLanes_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+
         }
     }
 }

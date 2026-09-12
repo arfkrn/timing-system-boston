@@ -7,10 +7,11 @@ namespace boston_timing_system.Models
     public class LaneModel : ObservableObject
     {
         private int _laneNumber;
+        private string _bibNumber = string.Empty;
         private string _swimmerName = string.Empty;
         private string _club = string.Empty;
         private string _seedTime = string.Empty;
-        private LaneStatus _status = LaneStatus.Ready;
+        private LaneStatus _status = LaneStatus.OFF;
         private TimeSpan? _finishTime;
         private string _formattedTime = "00.00.00";
         private string _timer1 = "00.00.00";
@@ -23,13 +24,46 @@ namespace boston_timing_system.Models
         public int LaneNumber
         {
             get => _laneNumber;
-            set => SetProperty(ref _laneNumber, value);
+            set
+            {
+                if (SetProperty(ref _laneNumber, value))
+                {
+                    OnPropertyChanged(nameof(BibNumber));
+                }
+            }
+        }
+
+        public string BibNumber
+        {
+            get => !string.IsNullOrWhiteSpace(_bibNumber) ? _bibNumber : LaneNumber.ToString();
+            set => SetProperty(ref _bibNumber, value);
         }
 
         public string SwimmerName
         {
             get => _swimmerName;
-            set => SetProperty(ref _swimmerName, value);
+            set
+            {
+                if (SetProperty(ref _swimmerName, value))
+                {
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        if (Status == LaneStatus.OFF)
+                        {
+                            Status = LaneStatus.Ready;
+                            StatusOverrideChangedCallback?.Invoke(this, LaneStatus.Ready);
+                        }
+                    }
+                    else
+                    {
+                        if (Status == LaneStatus.Ready || Status == LaneStatus.Empty)
+                        {
+                            Status = LaneStatus.OFF;
+                            StatusOverrideChangedCallback?.Invoke(this, LaneStatus.OFF);
+                        }
+                    }
+                }
+            }
         }
 
         public string Club
@@ -152,6 +186,7 @@ namespace boston_timing_system.Models
                     OnPropertyChanged(nameof(StatusDisplay));
                     OnPropertyChanged(nameof(CanStop));
                     OnPropertyChanged(nameof(IsFinished));
+                    OnPropertyChanged(nameof(IsOff));
                     OnPropertyChanged(nameof(OfficialTime));
                     OnPropertyChanged(nameof(OfficialTimeColor));
                     OnPropertyChanged(nameof(RankDisplay));
@@ -161,6 +196,7 @@ namespace boston_timing_system.Models
         }
 
         public bool IsFinished => Status == LaneStatus.Finished;
+        public bool IsOff => Status == LaneStatus.OFF;
 
         public TimeSpan? FinishTime
         {
@@ -297,7 +333,7 @@ namespace boston_timing_system.Models
 
         public void Reset()
         {
-            Status = LaneStatus.Ready;
+            Status = string.IsNullOrWhiteSpace(SwimmerName) ? LaneStatus.OFF : LaneStatus.Ready;
             FinishTime = null;
             FormattedTime = "00.00.00";
             _timer1 = "00.00.00";

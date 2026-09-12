@@ -14,6 +14,7 @@ namespace boston_timing_system.Models
     public class MeetExportOptions
     {
         public ExportScope Scope { get; set; } = ExportScope.FullMeet;
+        public TimingMode Mode { get; set; } = TimingMode.Pool;
 
         /// <summary>
         /// Set of Event numbers to export when Scope == SelectedEvents.
@@ -50,19 +51,21 @@ namespace boston_timing_system.Models
                    lane.Status == LaneStatus.DNF;
         }
 
-        public static MeetExportOptions CreateFullMeet()
+        public static MeetExportOptions CreateFullMeet(TimingMode mode = TimingMode.Pool)
         {
             return new MeetExportOptions
             {
-                Scope = ExportScope.FullMeet
+                Scope = ExportScope.FullMeet,
+                Mode = mode
             };
         }
 
-        public static MeetExportOptions CreateSelectedEvents(IEnumerable<int> eventNumbers)
+        public static MeetExportOptions CreateSelectedEvents(IEnumerable<int> eventNumbers, TimingMode mode = TimingMode.Pool)
         {
             var options = new MeetExportOptions
             {
-                Scope = ExportScope.SelectedEvents
+                Scope = ExportScope.SelectedEvents,
+                Mode = mode
             };
             foreach (var ev in eventNumbers)
             {

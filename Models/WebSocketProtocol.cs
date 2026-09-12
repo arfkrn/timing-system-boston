@@ -51,12 +51,21 @@ namespace boston_timing_system.Models
         /// </summary>
         [JsonPropertyName("accessCode")]
         public string? AccessCode { get; set; }
+
+        [JsonPropertyName("bibNumber")]
+        public string? BibNumber { get; set; }
+
+        [JsonPropertyName("swimmerName")]
+        public string? SwimmerName { get; set; }
     }
 
     public class ServerEvent
     {
         [JsonPropertyName("event")]
         public string Event { get; set; } = string.Empty;
+
+        [JsonPropertyName("timingMode")]
+        public string? TimingMode { get; set; }
 
         [JsonPropertyName("status")]
         public string? Status { get; set; }
@@ -96,6 +105,12 @@ namespace boston_timing_system.Models
 
         [JsonPropertyName("lanes")]
         public List<LaneStateDto>? Lanes { get; set; }
+
+        [JsonPropertyName("owsRecords")]
+        public List<OwsRecordDto>? OwsRecords { get; set; }
+
+        [JsonPropertyName("owsFinisherCount")]
+        public int? OwsFinisherCount { get; set; }
 
         [JsonPropertyName("meetName")]
         public string? MeetName { get; set; }
@@ -171,5 +186,29 @@ namespace boston_timing_system.Models
 
         [JsonPropertyName("averageLatencyMs")]
         public double AverageLatencyMs { get; set; }
+    }
+
+    public class OwsRecordDto
+    {
+        [JsonPropertyName("rank")]
+        public int Rank { get; set; }
+
+        [JsonPropertyName("bibNumber")]
+        public string BibNumber { get; set; } = string.Empty;
+
+        [JsonPropertyName("swimmerName")]
+        public string SwimmerName { get; set; } = string.Empty;
+
+        [JsonPropertyName("club")]
+        public string Club { get; set; } = string.Empty;
+
+        [JsonPropertyName("formattedTime")]
+        public string FormattedTime { get; set; } = "00:00.00";
+
+        [JsonPropertyName("gapTime")]
+        public string GapTime { get; set; } = "+00:00.00";
+
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = "Finished";
     }
 }

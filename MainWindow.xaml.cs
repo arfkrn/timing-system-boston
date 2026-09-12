@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using boston_timing_system.Core;
@@ -21,7 +22,24 @@ namespace boston_timing_system
         private readonly ExcelMeetDataService _excelService = new();
         private readonly Services.ThermalPrintService _thermalService = new();
 
-        private CompetitionMeetModel _currentMeet = new();
+        private CompetitionMeetModel _poolMeet = new();
+        private CompetitionMeetModel _owsMeet = new();
+
+        private CompetitionMeetModel _currentMeet
+        {
+            get => _engine.CurrentMode == TimingMode.Pool ? _poolMeet : _owsMeet;
+            set
+            {
+                if (_engine.CurrentMode == TimingMode.Pool)
+                {
+                    _poolMeet = value;
+                }
+                else
+                {
+                    _owsMeet = value;
+                }
+            }
+        }
 
         public System.Collections.ObjectModel.ObservableCollection<string> MessageLogs { get; } = new();
 
@@ -32,6 +50,19 @@ namespace boston_timing_system
             // 1. Initialize timing engine with 10 lanes
             _engine = new RaceTimingEngine(defaultLaneCount: 10);
             icLanes.ItemsSource = _engine.Lanes;
+            icOwsRecords.ItemsSource = _engine.OwsRecords;
+
+            // Enable thread-safe collection synchronization for WPF UI
+            BindingOperations.EnableCollectionSynchronization(_engine.Lanes, _engine.SyncRoot);
+            BindingOperations.EnableCollectionSynchronization(_engine.OwsRecords, _engine.SyncRoot);
+
+            _engine.OwsRecords.CollectionChanged += (s, e) => RunOnUi(UpdateOwsSummaryUi);
+            _engine.ModeChanged += (m) => RunOnUi(() => ApplyTimingModeUi(m));
+            _engine.OwsFinishRecorded += (rec) => RunOnUi(() =>
+            {
+                UpdateOwsSummaryUi();
+                AddLogMessage($"[OWS FINISH] #{rec.Rank} {rec.FormattedTime} (Bib {rec.BibNumber} {rec.SwimmerName})");
+            });
 
             // 2. Initialize and start WebSocket server
             _wsServer = new TimingWebSocketServer(_engine, port: 8181);
@@ -51,7 +82,7 @@ namespace boston_timing_system
             txtAccessCode.Text = _wsServer.AccessCode;
             txtAccessScoreboard.Text = $"{_wsServer.LocalIpAddress}:3000/scoreboard.html";
 
-            AddLogMessage("Mode changed to POOL");
+            AddLogMessage("Mode initialized: POOL SWIMMING");
             AddLogMessage("System ready. ClosedXML Meet Manager active.");
             AddLogMessage($"WebSocket Server listening on {_wsServer.ServerUri}");
             _wsServer.PropertyChanged += (s, e) =>
@@ -103,75 +134,30 @@ namespace boston_timing_system
 
         private void InitializeDefaultMeet()
         {
-            _currentMeet = new CompetitionMeetModel
+            // 1. Initialize clean Pool Swimming Meet (No dummy events)
+            _poolMeet = new CompetitionMeetModel
             {
-                MeetName = "Jakarta Open Aquatic Championship 2026"
+                MeetName = "Swimming Competition Meet"
             };
 
-            // Event 1: 50m Freestyle Men (2 Heats)
-            var event1 = new RaceEventModel(1, "50m Freestyle Men");
-            var heat1_1 = new HeatModel(1, 1, event1.EventName);
-            var heat1_2 = new HeatModel(2, 1, event1.EventName);
-
-            // Populate sample swimmers for Heat 1 (Seed times empty by default)
-            ConfigureSampleLane(heat1_1, 1, "Rizky Pratama", "Tirta Jaya Aquatic", "");
-            ConfigureSampleLane(heat1_1, 2, "Budi Santoso", "Millennium Aquatic", "");
-            ConfigureSampleLane(heat1_1, 3, "Ahmad Fauzi", "Jaq Aquatic Club", "");
-            ConfigureSampleLane(heat1_1, 4, "Kevin Wijaya", "Tirta Kencana", "");
-            ConfigureSampleLane(heat1_1, 5, "Dimas Anggara", "Surabaya Aquatic Club", "");
-            ConfigureSampleLane(heat1_1, 6, "Fajar Nugraha", "Bandung Swimming Club", "");
-            ConfigureSampleLane(heat1_1, 7, "Bayu Permana", "Garuda SC", "");
-            ConfigureSampleLane(heat1_1, 8, "Rian Hidayat", "Nusantara AC", "");
-
-            // Populate sample swimmers for Heat 2
-            ConfigureSampleLane(heat1_2, 2, "Gede Arya", "Bali Aquatic Club", "");
-            ConfigureSampleLane(heat1_2, 3, "Jonathan Tan", "Medan Swimming Club", "");
-            ConfigureSampleLane(heat1_2, 4, "Michael Setiawan", "Millennium Aquatic", "");
-            ConfigureSampleLane(heat1_2, 5, "Hendro Kusumo", "Jaq Aquatic Club", "");
-            ConfigureSampleLane(heat1_2, 6, "Aldo Saputra", "Tirta Kencana", "");
-            ConfigureSampleLane(heat1_2, 7, "Farhan Akbar", "Semarang SC", "");
-
-            event1.Heats.Add(heat1_1);
-            event1.Heats.Add(heat1_2);
-            _currentMeet.Events.Add(event1);
-
-            // Event 2: 100m Breaststroke Women (1 Heat)
-            var event2 = new RaceEventModel(2, "100m Breaststroke Women");
-            var heat2_1 = new HeatModel(1, 2, event2.EventName);
-            ConfigureSampleLane(heat2_1, 2, "Siti Rahma", "Millennium Aquatic", "");
-            ConfigureSampleLane(heat2_1, 3, "Nadia Utami", "Jaq Aquatic Club", "");
-            ConfigureSampleLane(heat2_1, 4, "Clara Anastasia", "Tirta Kencana", "");
-            ConfigureSampleLane(heat2_1, 5, "Putri Anggraini", "Bandung SC", "");
-            ConfigureSampleLane(heat2_1, 6, "Aisyah Bella", "Surabaya AC", "");
-
-            event2.Heats.Add(heat2_1);
-            _currentMeet.Events.Add(event2);
-
-            // Bind to UI
-            txtMeetTitle.Text = _currentMeet.MeetName;
-            if (_currentMeet.Events.Count > 0)
+            // 2. Initialize clean Open Water Swimming (OWS) Meet (No dummy events)
+            _owsMeet = new CompetitionMeetModel
             {
-                _currentMeet.SelectedEvent = _currentMeet.Events[0];
-                if (_currentMeet.SelectedEvent.Heats.Count > 0)
-                {
-                    LoadHeat(_currentMeet.SelectedEvent.Heats[0]);
-                }
-            }
+                MeetName = "Open Water Swimming Meet"
+            };
+
+            // 3. Clear engine lanes (clean empty slots ready for import/data entry)
+            _engine.InitializeLanes(10);
+
+            // 4. Bind initially active meet to UI
+            txtMeetTitle.Text = _currentMeet.MeetName;
+            _currentMeet.SelectedEvent = null;
+            _currentMeet.SelectedHeat = null;
+
             UpdateEventDisplay();
             UpdateHeatDisplay();
             UpdateNavigationButtonStates();
-        }
-
-        private static void ConfigureSampleLane(HeatModel heat, int laneNum, string name, string club, string seedTime = "")
-        {
-            var lane = heat.Lanes.FirstOrDefault(l => l.LaneNumber == laneNum);
-            if (lane != null)
-            {
-                lane.SwimmerName = name;
-                lane.Club = club;
-                lane.SeedTime = seedTime;
-                lane.Status = LaneStatus.Ready;
-            }
+            UpdateOwsSummaryUi();
         }
 
         private void BtnOpenMeetManager_Click(object sender, RoutedEventArgs e)
@@ -181,9 +167,8 @@ namespace boston_timing_system
                 _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
             }
 
-            var meetManagerWin = new MeetManagerWindow(_currentMeet, _excelService)
+            var meetManagerWin = new MeetManagerWindow(_currentMeet, _excelService, _engine.CurrentMode)
             {
-
                 Owner = this
             };
 
@@ -274,7 +259,7 @@ namespace boston_timing_system
         {
             if (_currentMeet.SelectedEvent != null)
             {
-                txtCurrentEventDisplay.Text = $"Event #{_currentMeet.SelectedEvent.EventNumber:D2}";
+                txtCurrentEventDisplay.Text = $"{_currentMeet.SelectedEvent.EventNumber:D2}";
                 txtCurrentEventName.Text = _currentMeet.SelectedEvent.EventName;
             }
             else
@@ -373,8 +358,8 @@ namespace boston_timing_system
             {
                 int totalHeats = _currentMeet.SelectedEvent.Heats.Count;
                 txtCurrentHeatDisplay.Text = totalHeats > 1
-                    ? $"Heat {_currentMeet.SelectedHeat.HeatNumber} / {totalHeats}"
-                    : $"Heat {_currentMeet.SelectedHeat.HeatNumber}";
+                    ? $"{_currentMeet.SelectedHeat.HeatNumber} / {totalHeats}"
+                    : $"{_currentMeet.SelectedHeat.HeatNumber}";
 
                 int swimmerCount = _currentMeet.SelectedHeat.Lanes.Count(
                     l => l.Status != LaneStatus.OFF && l.Status != LaneStatus.Empty && !string.IsNullOrWhiteSpace(l.SwimmerName));
@@ -458,7 +443,11 @@ namespace boston_timing_system
                     lane.FinishTime = null;
                     lane.FormattedTime = "00.00.00";
                     lane.Rank = null;
-                    if (lane.Status != LaneStatus.OFF && lane.Status != LaneStatus.Empty)
+                    if (string.IsNullOrWhiteSpace(lane.SwimmerName))
+                    {
+                        lane.Status = LaneStatus.OFF;
+                    }
+                    else if (lane.Status != LaneStatus.OFF && lane.Status != LaneStatus.Empty)
                     {
                         lane.Status = LaneStatus.Ready;
                     }
@@ -544,22 +533,196 @@ namespace boston_timing_system
             });
         }
 
+        private static readonly SolidColorBrush ActiveSignalBrush = CreateFrozenBrush("#16A34A");
+        private static readonly SolidColorBrush IdleSignalBrush = CreateFrozenBrush("#94A3B8");
+
+        private static SolidColorBrush CreateFrozenBrush(string colorHex)
+        {
+            var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colorHex));
+            brush.Freeze();
+            return brush;
+        }
+
         private void UpdateMobileConnectIndicators()
         {
-            var activeBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
-            var idleBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8"));
-
             bool hasStarter = _wsServer.StartersCount > 0;
-            barStarter1.Fill = hasStarter ? activeBrush : idleBrush;
-            barStarter2.Fill = hasStarter ? activeBrush : idleBrush;
-            barStarter3.Fill = hasStarter ? activeBrush : idleBrush;
-            barStarter4.Fill = hasStarter ? activeBrush : idleBrush;
+            barStarter1.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
+            barStarter2.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
+            barStarter3.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
+            barStarter4.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
 
-            bool hasChief = _wsServer.ChiefsCount > 0;
-            barChief1.Fill = hasChief ? activeBrush : idleBrush;
-            barChief2.Fill = hasChief ? activeBrush : idleBrush;
-            barChief3.Fill = hasChief ? activeBrush : idleBrush;
-            barChief4.Fill = hasChief ? activeBrush : idleBrush;
+            if (_engine.IsOpenWaterMode)
+            {
+                txtMobileRole2.Text = "WASIT FINIS";
+                bool hasReferee = _wsServer.IsOwsRefereeConnected || _wsServer.RefereesCount > 0;
+                barChief1.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
+                barChief2.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
+                barChief3.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
+                barChief4.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
+            }
+            else
+            {
+                txtMobileRole2.Text = "CHIEF";
+                bool hasChief = _wsServer.ChiefsCount > 0;
+                barChief1.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
+                barChief2.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
+                barChief3.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
+                barChief4.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
+            }
+        }
+
+        private void BtnToggleTimingMode_Click(object sender, RoutedEventArgs e)
+        {
+            if (_engine.IsRunning)
+            {
+                MessageBox.Show(
+                    "Balapan sedang berjalan! Hentikan atau reset balapan terlebih dahulu sebelum mengganti mode pencatatan waktu.",
+                    "Peringatan Mode Balapan",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            // Save results of currently loaded heat before switching
+            if (_currentMeet.SelectedHeat != null && _engine.Status == RaceStatus.Finished && _currentMeet.SelectedHeat.HasResults)
+            {
+                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+            }
+
+            var targetMode = _engine.CurrentMode == TimingMode.Pool ? TimingMode.OpenWater : TimingMode.Pool;
+            _engine.SetMode(targetMode);
+            ApplyTimingModeUi(targetMode);
+
+            // Switch to the separate meet data for the target mode
+            txtMeetTitle.Text = _currentMeet.MeetName;
+
+            if (_currentMeet.Events.Count > 0)
+            {
+                var targetEvent = _currentMeet.SelectedEvent ?? _currentMeet.Events[0];
+                _currentMeet.SelectedEvent = targetEvent;
+
+                var targetHeat = (_currentMeet.SelectedHeat != null && targetEvent.Heats.Contains(_currentMeet.SelectedHeat))
+                    ? _currentMeet.SelectedHeat
+                    : targetEvent.Heats.FirstOrDefault();
+
+                if (targetHeat != null)
+                {
+                    LoadHeat(targetHeat);
+                }
+                else
+                {
+                    _currentMeet.SelectedHeat = null;
+                    UpdateEventDisplay();
+                    UpdateHeatDisplay();
+                    UpdateNavigationButtonStates();
+                }
+            }
+            else
+            {
+                _currentMeet.SelectedEvent = null;
+                _currentMeet.SelectedHeat = null;
+                UpdateEventDisplay();
+                UpdateHeatDisplay();
+                UpdateNavigationButtonStates();
+            }
+
+            if (_currentMeet.SelectedEvent != null && _currentMeet.SelectedHeat != null)
+            {
+                _wsServer.UpdateCurrentMeetContext(
+                    _currentMeet.MeetName,
+                    _currentMeet.SelectedEvent.EventNumber,
+                    _currentMeet.SelectedEvent.EventName,
+                    _currentMeet.SelectedHeat.HeatNumber);
+            }
+            else
+            {
+                _wsServer.UpdateCurrentMeetContext(
+                    _currentMeet.MeetName,
+                    0,
+                    "No Event",
+                    0);
+            }
+
+            AddLogMessage($"Switched to {targetMode} Meet: '{_currentMeet.MeetName}' ({_currentMeet.Events.Count} Events)");
+        }
+
+        private void ApplyTimingModeUi(TimingMode mode)
+        {
+            if (mode == TimingMode.Pool)
+            {
+                txtTimingModeText.Text = "POOL SWIMMING";
+                txtTimingModeText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1D4ED8"));
+                btnToggleTimingMode.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EFF6FF"));
+                btnToggleTimingMode.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6"));
+
+                bdrPoolLanesView.Visibility = Visibility.Visible;
+                bdrOwsView.Visibility = Visibility.Collapsed;
+
+                AddLogMessage("Mode changed to POOL SWIMMING (10 Lanes)");
+            }
+            else
+            {
+                txtTimingModeText.Text = "OPEN WATER (OWS)";
+                txtTimingModeText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F766E"));
+                btnToggleTimingMode.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDFA"));
+                btnToggleTimingMode.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0D9488"));
+
+                bdrPoolLanesView.Visibility = Visibility.Collapsed;
+                bdrOwsView.Visibility = Visibility.Visible;
+
+                UpdateOwsSummaryUi();
+                AddLogMessage("Mode changed to OPEN WATER SWIMMING (OWS - 1 Starter & 1 Wasit)");
+            }
+
+            UpdateMobileConnectIndicators();
+        }
+
+        private void BtnOwsManualTap_Click(object sender, RoutedEventArgs e)
+        {
+            if (_engine.Status != RaceStatus.Running)
+            {
+                MessageBox.Show(
+                    "Lomba belum dimulai! Tekan 'START' terlebih dahulu sebelum mencatat waktu finis perenang.",
+                    "Info OWS",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var record = _engine.RecordOwsFinish();
+            if (record != null)
+            {
+                UpdateOwsSummaryUi();
+                AddLogMessage($"[DESKTOP OWS TAP] Rank #{record.Rank} ({record.FormattedTime}) dicatat.");
+            }
+        }
+
+        private void BtnDeleteOwsRecord_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is OwsRecordModel record)
+            {
+                var confirm = MessageBox.Show(
+                    $"Hapus catatan finis Rank #{record.Rank} ({record.FormattedTime}) [Bib: {record.BibNumber}]?",
+                    "Konfirmasi Hapus Finisher OWS",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (confirm == MessageBoxResult.Yes)
+                {
+                    _engine.RemoveOwsRecord(record);
+                    UpdateOwsSummaryUi();
+                    AddLogMessage($"[OWS DELETE] Rank #{record.Rank} dihapus.");
+                }
+            }
+        }
+
+        private void UpdateOwsSummaryUi()
+        {
+            RunOnUi(() =>
+            {
+                int count = _engine.OwsRecords.Count;
+                pnlOwsEmptyState.Visibility = count > 0 ? Visibility.Collapsed : Visibility.Visible;
+            });
         }
 
         private void BtnPrintResults_Click(object sender, RoutedEventArgs e)
@@ -688,6 +851,7 @@ namespace boston_timing_system
                 txtRaceStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0369A1"));
                 bdRaceStatus.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E0F2FE"));
                 bdRaceStatus.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BAE6FD"));
+                UpdateOwsSummaryUi();
                 UpdateUiState();
                 UpdateNavigationButtonStates();
                 AddLogMessage("Race timer reset [READY]");

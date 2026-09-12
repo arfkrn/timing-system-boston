@@ -79,6 +79,9 @@ namespace boston_timing_system.Services
             private set => SetProperty(ref _spectatorsCount, value);
         }
 
+        public bool IsOwsRefereeConnected => _clients.Values.Any(c => c.Role == ClientRole.Referee);
+        public double OwsRefereeLatencyMs => _clients.Values.FirstOrDefault(c => c.Role == ClientRole.Referee)?.OneWayLatencyMs ?? 0.0;
+
         private string _accessCode = string.Empty;
         public string AccessCode
         {
@@ -127,6 +130,8 @@ namespace boston_timing_system.Services
             _engine.LaneStatusChanged += HandleEngineLaneStatusChanged;
             _engine.LaneSplitRecorded += HandleEngineLaneSplitRecorded;
             _engine.Tick += HandleEngineTick;
+            _engine.ModeChanged += HandleEngineModeChanged;
+            _engine.OwsFinishRecorded += HandleEngineOwsFinishRecorded;
         }
 
         public void Start()
@@ -353,7 +358,46 @@ namespace boston_timing_system.Services
                         _engine.StartRace();
                         break;
 
+                    case "RECORD_OWS_FINISH":
                     case "STOP_LANE":
+                        if (_engine.CurrentMode == TimingMode.OpenWater)
+                        {
+                            double owsLatencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
+                            TimeSpan? compensatedOwsTime = null;
+
+                            if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
+                            {
+                                TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value);
+                                if (clientElapsed > _engine.Elapsed)
+                                {
+                                    clientElapsed = _engine.Elapsed;
+                                }
+                                compensatedOwsTime = clientElapsed;
+                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress}) (Using Client Stopwatch Elapsed: {clientElapsed:mm\\:ss\\.ff})");
+                            }
+                            else if (owsLatencyMs > 0)
+                            {
+                                TimeSpan arrival = _engine.Elapsed;
+                                compensatedOwsTime = arrival - TimeSpan.FromMilliseconds(owsLatencyMs);
+                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress}) (Compensated: -{owsLatencyMs:F1}ms)");
+                            }
+                            else
+                            {
+                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress})");
+                            }
+
+                            var recorded = _engine.RecordOwsFinish(compensatedOwsTime, command.BibNumber, command.SwimmerName);
+                            if (recorded != null)
+                            {
+                                Log($"[OWS FINISH SUCCESS] Rank #{recorded.Rank} recorded: {recorded.FormattedTime} ({recorded.BibNumber})");
+                            }
+                            else
+                            {
+                                Log($"[OWS FINISH REJECTED] Status perlombaan saat ini '{_engine.Status}'. Lomba harus di-START terlebih dahulu agar finis tercatat.");
+                            }
+                            break;
+                        }
+
                         int laneToStop = command.LaneNumber ?? client.AssignedLane ?? -1;
                         if (laneToStop >= 0)
                         {
@@ -382,9 +426,16 @@ namespace boston_timing_system.Services
                             }
 
                             bool stopped = _engine.StopLane(laneToStop, compensatedTime);
-                            if (stopped && client.Role == ClientRole.Chief)
+                            if (stopped)
                             {
-                                Log($"[CHIEF BACKUP] Lane {laneToStop} stopped");
+                                if (client.Role == ClientRole.Chief)
+                                {
+                                    Log($"[CHIEF BACKUP] Lane {laneToStop} stopped");
+                                }
+                            }
+                            else
+                            {
+                                Log($"[STOP_LANE REJECTED] Lane {laneToStop} tidak dapat dihentikan. Status perlombaan: '{_engine.Status}'");
                             }
 
                             var targetLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == laneToStop);
@@ -708,9 +759,21 @@ namespace boston_timing_system.Services
 
             double avgLatency = _clients.Values.Count > 0 ? _clients.Values.Average(c => c.OneWayLatencyMs) : 0.0;
 
+            var owsDtos = _engine.OwsRecords.Select(r => new OwsRecordDto
+            {
+                Rank = r.Rank,
+                BibNumber = r.BibNumber,
+                SwimmerName = r.SwimmerName,
+                Club = r.Club,
+                FormattedTime = r.FormattedTime,
+                GapTime = r.GapTime,
+                Status = r.Status.ToString()
+            }).ToList();
+
             return new ServerEvent
             {
                 Event = "STATE_SYNC",
+                TimingMode = _engine.CurrentMode == TimingMode.OpenWater ? "OPEN_WATER" : "POOL",
                 Status = _engine.Status.ToString(),
                 ElapsedTime = _engine.FormattedElapsedTime,
                 MeetName = CurrentMeetName,
@@ -719,6 +782,8 @@ namespace boston_timing_system.Services
                 HeatNumber = CurrentHeatNumber,
                 AccessCode = AccessCode,
                 Lanes = laneDtos,
+                OwsRecords = owsDtos,
+                OwsFinisherCount = _engine.OwsRecords.Count,
                 ConnectedClients = new ClientSummaryDto
                 {
                     TotalCount = TotalClients,
@@ -786,6 +851,39 @@ namespace boston_timing_system.Services
             LogReceived?.Invoke($"[{DateTime.Now:HH:mm:ss}] {message}");
         }
 
+        private void HandleEngineModeChanged(TimingMode mode)
+        {
+            Broadcast(new ServerEvent
+            {
+                Event = "TIMING_MODE_CHANGED",
+                TimingMode = mode == TimingMode.OpenWater ? "OPEN_WATER" : "POOL",
+                Message = $"Timing mode switched to {mode}"
+            });
+            Broadcast(CreateStateSyncEvent());
+            Log($"[MODE SWITCH] Timing system mode changed to {mode.ToString().ToUpperInvariant()}");
+        }
+
+        private void HandleEngineOwsFinishRecorded(OwsRecordModel record)
+        {
+            Broadcast(new ServerEvent
+            {
+                Event = "OWS_FINISH_RECORDED",
+                TimingMode = "OPEN_WATER",
+                OwsFinisherCount = _engine.OwsRecords.Count,
+                OwsRecords = _engine.OwsRecords.Select(r => new OwsRecordDto
+                {
+                    Rank = r.Rank,
+                    BibNumber = r.BibNumber,
+                    SwimmerName = r.SwimmerName,
+                    Club = r.Club,
+                    FormattedTime = r.FormattedTime,
+                    GapTime = r.GapTime,
+                    Status = r.Status.ToString()
+                }).ToList(),
+                Message = $"OWS Finish recorded: #{record.Rank} ({record.FormattedTime}) [Bib {record.BibNumber}]"
+            });
+        }
+
         public void Dispose()
         {
             Stop();
@@ -796,6 +894,8 @@ namespace boston_timing_system.Services
             _engine.LaneStatusChanged -= HandleEngineLaneStatusChanged;
             _engine.LaneSplitRecorded -= HandleEngineLaneSplitRecorded;
             _engine.Tick -= HandleEngineTick;
+            _engine.ModeChanged -= HandleEngineModeChanged;
+            _engine.OwsFinishRecorded -= HandleEngineOwsFinishRecorded;
         }
     }
     public class CachedSession

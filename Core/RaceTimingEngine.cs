@@ -12,10 +12,37 @@ namespace boston_timing_system.Core
         private readonly HighPrecisionTimer _timer = new();
         private readonly object _syncLock = new();
 
+        public object SyncRoot => _syncLock;
+
         private RaceStatus _status = RaceStatus.Ready;
         private string _formattedElapsedTime = "00.00.00";
+        private TimingMode _currentMode = TimingMode.Pool;
+        private HeatModel? _currentHeat;
 
         public ObservableCollection<LaneModel> Lanes { get; } = new();
+        public ObservableCollection<OwsRecordModel> OwsRecords { get; } = new();
+
+        public TimingMode CurrentMode
+        {
+            get => _currentMode;
+            set
+            {
+                if (SetProperty(ref _currentMode, value))
+                {
+                    OnPropertyChanged(nameof(IsPoolMode));
+                    OnPropertyChanged(nameof(IsOpenWaterMode));
+                    ModeChanged?.Invoke(value);
+                }
+            }
+        }
+
+        public bool IsPoolMode => CurrentMode == TimingMode.Pool;
+        public bool IsOpenWaterMode => CurrentMode == TimingMode.OpenWater;
+
+        public void SetMode(TimingMode mode)
+        {
+            CurrentMode = mode;
+        }
 
         public RaceStatus Status
         {
@@ -53,6 +80,8 @@ namespace boston_timing_system.Core
         public event Action<LaneModel, LaneStatus>? LaneStatusChanged;
         public event Action<LaneModel, TimeSpan>? LaneSplitRecorded;
         public event Action<TimeSpan>? Tick;
+        public event Action<TimingMode>? ModeChanged;
+        public event Action<OwsRecordModel>? OwsFinishRecorded;
 
         public RaceTimingEngine(int defaultLaneCount = 10)
         {
@@ -71,9 +100,10 @@ namespace boston_timing_system.Core
                     var lane = new LaneModel
                     {
                         LaneNumber = i,
-                        SwimmerName = $"Swimmer {i}",
-                        Club = $"Club {i}",
-                        Status = LaneStatus.Ready
+                        SwimmerName = string.Empty,
+                        Club = string.Empty,
+                        SeedTime = string.Empty,
+                        Status = LaneStatus.OFF
                     };
                     lane.StatusOverrideChangedCallback = (l, s) => SetLaneStatus(l.LaneNumber, s);
                     Lanes.Add(lane);
@@ -84,9 +114,10 @@ namespace boston_timing_system.Core
                     var lane0 = new LaneModel
                     {
                         LaneNumber = 0,
-                        SwimmerName = "Swimmer 0",
-                        Club = "Club 0",
-                        Status = LaneStatus.Ready
+                        SwimmerName = string.Empty,
+                        Club = string.Empty,
+                        SeedTime = string.Empty,
+                        Status = LaneStatus.OFF
                     };
                     lane0.StatusOverrideChangedCallback = (l, s) => SetLaneStatus(l.LaneNumber, s);
                     Lanes.Add(lane0);
@@ -99,6 +130,24 @@ namespace boston_timing_system.Core
             lock (_syncLock)
             {
                 if (!CanStart)
+                {
+                    return false;
+                }
+
+                // Jangan izinkan start jika belum ada data event/heat atau peserta kosong
+                bool hasParticipants = false;
+                if (CurrentMode == TimingMode.OpenWater)
+                {
+                    hasParticipants = _currentHeat != null && _currentHeat.Lanes.Any(l => 
+                        l.Status != LaneStatus.OFF && 
+                        (!string.IsNullOrWhiteSpace(l.SwimmerName) || !string.IsNullOrWhiteSpace(l.BibNumber)));
+                }
+                else
+                {
+                    hasParticipants = Lanes.Any(l => l.Status == LaneStatus.Ready);
+                }
+
+                if (!hasParticipants)
                 {
                     return false;
                 }
@@ -316,9 +365,160 @@ namespace boston_timing_system.Core
                 {
                     lane.Reset();
                 }
+
+                OwsRecords.Clear();
             }
 
             RaceReset?.Invoke();
+        }
+
+        public OwsRecordModel? RecordOwsFinish(TimeSpan? compensatedTime = null, string? bibNumber = null, string? swimmerName = null, string? club = null)
+        {
+            OwsRecordModel record;
+            bool autoStopped = false;
+            lock (_syncLock)
+            {
+                if (Status != RaceStatus.Running)
+                {
+                    return null;
+                }
+
+                // Check quota peserta maksimal OWS: tidak boleh melebihi jumlah peserta yang terdaftar pada heat/event ini
+                int maxParticipants = 0;
+                if (_currentHeat != null)
+                {
+                    maxParticipants = _currentHeat.Lanes.Count(l => 
+                        l.Status != LaneStatus.OFF && 
+                        (!string.IsNullOrWhiteSpace(l.SwimmerName) || !string.IsNullOrWhiteSpace(l.BibNumber)));
+                }
+
+                if (maxParticipants > 0 && OwsRecords.Count >= maxParticipants)
+                {
+                    return null;
+                }
+
+                TimeSpan currentElapsed = _timer.Elapsed;
+                TimeSpan finishTime = currentElapsed;
+
+                if (compensatedTime.HasValue)
+                {
+                    finishTime = compensatedTime.Value;
+                    if (finishTime < TimeSpan.Zero) finishTime = TimeSpan.Zero;
+                    else if (finishTime > currentElapsed) finishTime = currentElapsed;
+                }
+
+                // Invariant: Finisher berikutnya dalam lorong finis OWS tidak boleh memiliki waktu lebih kecil dari finisher sebelumnya
+                if (OwsRecords.Count > 0)
+                {
+                    var lastFinisher = OwsRecords.Last();
+                    if (finishTime < lastFinisher.FinishTime)
+                    {
+                        finishTime = lastFinisher.FinishTime;
+                    }
+                }
+
+                int newRank = OwsRecords.Count + 1;
+                string defaultBib = !string.IsNullOrWhiteSpace(bibNumber) ? bibNumber : $"{newRank:D2}";
+                string defaultName = !string.IsNullOrWhiteSpace(swimmerName) ? swimmerName : $"Swimmer {newRank}";
+                string defaultClub = club ?? string.Empty;
+
+                if (_currentHeat != null)
+                {
+                    var matchedLane = _currentHeat.Lanes.FirstOrDefault(l => 
+                        l.BibNumber.Equals(defaultBib, StringComparison.OrdinalIgnoreCase) || 
+                        l.LaneNumber.ToString() == defaultBib);
+
+                    if (matchedLane != null)
+                    {
+                        if (string.IsNullOrWhiteSpace(swimmerName) && !string.IsNullOrWhiteSpace(matchedLane.SwimmerName))
+                        {
+                            defaultName = matchedLane.SwimmerName;
+                        }
+                        if (string.IsNullOrWhiteSpace(club) && !string.IsNullOrWhiteSpace(matchedLane.Club))
+                        {
+                            defaultClub = matchedLane.Club;
+                        }
+
+                        matchedLane.Status = LaneStatus.Finished;
+                        matchedLane.FinishTime = finishTime;
+                        matchedLane.FormattedTime = LaneModel.FormatTime(finishTime);
+                        matchedLane.Rank = newRank;
+                    }
+                }
+
+                string gap = "+00.00.00";
+                if (OwsRecords.Count > 0)
+                {
+                    TimeSpan leadTime = OwsRecords[0].FinishTime;
+                    TimeSpan diff = finishTime - leadTime;
+                    if (diff < TimeSpan.Zero) diff = TimeSpan.Zero;
+                    gap = "+" + LaneModel.FormatTime(diff);
+                }
+
+                record = new OwsRecordModel
+                {
+                    Rank = newRank,
+                    BibNumber = defaultBib,
+                    SwimmerName = defaultName,
+                    Club = defaultClub,
+                    FinishTime = finishTime,
+                    GapTime = gap,
+                    Status = LaneStatus.Finished
+                };
+
+                OwsRecords.Add(record);
+
+                // Jika seluruh peserta yang terdaftar pada heat/event ini telah finis, auto-stop race!
+                if (maxParticipants > 0 && OwsRecords.Count >= maxParticipants)
+                {
+                    _timer.Stop();
+                    Status = RaceStatus.Finished;
+                    FormattedElapsedTime = LaneModel.FormatTime(finishTime);
+                    autoStopped = true;
+                }
+            }
+
+            OwsFinishRecorded?.Invoke(record);
+
+            if (autoStopped)
+            {
+                RaceStopped?.Invoke();
+            }
+
+            return record;
+        }
+
+        public void RecalculateOwsRanks()
+        {
+            lock (_syncLock)
+            {
+                if (OwsRecords.Count == 0) return;
+                var ordered = OwsRecords.OrderBy(r => r.FinishTime).ToList();
+                for (int i = 0; i < ordered.Count; i++)
+                {
+                    ordered[i].Rank = i + 1;
+                    if (i == 0)
+                    {
+                        ordered[i].GapTime = "+00.00.00";
+                    }
+                    else
+                    {
+                        TimeSpan diff = ordered[i].FinishTime - ordered[0].FinishTime;
+                        ordered[i].GapTime = "+" + LaneModel.FormatTime(diff);
+                    }
+                }
+            }
+        }
+
+        public void RemoveOwsRecord(OwsRecordModel record)
+        {
+            lock (_syncLock)
+            {
+                if (OwsRecords.Remove(record))
+                {
+                    RecalculateOwsRanks();
+                }
+            }
         }
 
         public void SetLaneStatus(int laneNumber, LaneStatus status)
@@ -391,6 +591,29 @@ namespace boston_timing_system.Core
         {
             lock (_syncLock)
             {
+                _currentHeat = heat;
+
+                if (CurrentMode == TimingMode.OpenWater)
+                {
+                    OwsRecords.Clear();
+                    foreach (var l in heat.Lanes.Where(x => x.Status == LaneStatus.Finished && x.FinishTime.HasValue).OrderBy(x => x.Rank ?? 999))
+                    {
+                        OwsRecords.Add(new OwsRecordModel
+                        {
+                            Rank = l.Rank ?? 0,
+                            BibNumber = l.BibNumber,
+                            SwimmerName = l.SwimmerName,
+                            Club = l.Club,
+                            FinishTime = l.FinishTime!.Value,
+                            FormattedTime = l.FormattedTime
+                        });
+                    }
+                    if (OwsRecords.Count > 0)
+                    {
+                        RecalculateOwsRanks();
+                    }
+                }
+
                 foreach (var engineLane in Lanes)
                 {
                     var heatLane = heat.Lanes.FirstOrDefault(l => l.LaneNumber == engineLane.LaneNumber);
@@ -445,6 +668,38 @@ namespace boston_timing_system.Core
         {
             lock (_syncLock)
             {
+                if (CurrentMode == TimingMode.OpenWater)
+                {
+                    foreach (var record in OwsRecords)
+                    {
+                        var targetLane = heat.Lanes.FirstOrDefault(l => l.BibNumber.Equals(record.BibNumber, StringComparison.OrdinalIgnoreCase));
+                        if (targetLane != null)
+                        {
+                            targetLane.Status = LaneStatus.Finished;
+                            targetLane.FinishTime = record.FinishTime;
+                            targetLane.FormattedTime = record.FormattedTime;
+                            targetLane.Rank = record.Rank;
+                        }
+                        else
+                        {
+                            heat.Lanes.Add(new LaneModel
+                            {
+                                LaneNumber = heat.Lanes.Count + 1,
+                                BibNumber = record.BibNumber,
+                                SwimmerName = record.SwimmerName,
+                                Club = record.Club,
+                                Status = LaneStatus.Finished,
+                                FinishTime = record.FinishTime,
+                                FormattedTime = record.FormattedTime,
+                                Rank = record.Rank
+                            });
+                        }
+                    }
+                    heat.CalculateRanks();
+                    heat.IsCompleted = heat.HasResults;
+                    return;
+                }
+
                 foreach (var engineLane in Lanes)
                 {
                     var heatLane = heat.Lanes.FirstOrDefault(l => l.LaneNumber == engineLane.LaneNumber);

@@ -196,9 +196,7 @@
 
                 <!-- Title -->
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <TextBlock Text="SWIMMING MEET &amp; DATA MANAGER" 
-                               FontSize="11.5" FontWeight="Bold" Foreground="#0284C7" />
-                    <TextBlock Text="Manajemen Event, Susunan Heat &amp; Ekspor Hasil" 
+                    <TextBlock x:Name="txtMeetHeaderSubtitle" Text="Event Management, Heat Schedule, &amp; Results Export" 
                                FontSize="17" FontWeight="Bold" Foreground="#0F172A" Margin="0,2,0,0"/>
                 </StackPanel>
 
@@ -249,7 +247,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="DAFTAR NOMOR EVENT &amp; HEAT" 
+                    <TextBlock Grid.Row="0" Text="LIST OF EVENT &amp; HEAT NUMBERS" 
                                FontSize="11" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,8"/>
 
                     <!-- Action buttons: + Event, + Heat, Delete -->
@@ -259,13 +257,13 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="btnAddEvent" Content="+ Event" Grid.Column="0"
+                        <Button x:Name="btnAddEvent" Content="New Event" Grid.Column="0"
                                 Style="{StaticResource ActionMiniButtonStyle}" Background="#0284C7" Margin="0,0,4,0"
                                 ToolTip="Tambah Event Baru" Click="BtnAddEvent_Click"/>
-                        <Button x:Name="btnAddHeat" Content="+ Heat" Grid.Column="1"
+                        <Button x:Name="btnAddHeat" Content="New Heat" Grid.Column="1"
                                 Style="{StaticResource ActionMiniButtonStyle}" Background="#0D9488" Margin="2,0,4,0"
                                 ToolTip="Tambah Heat pada Event yang dipilih" Click="BtnAddHeat_Click"/>
-                        <Button x:Name="btnDeleteSelected" Content="Hapus" Grid.Column="2"
+                        <Button x:Name="btnDeleteSelected" Content="Delete" Grid.Column="2"
                                 Style="{StaticResource ActionMiniButtonStyle}" Background="#E11D48" Padding="10,5"
                                 ToolTip="Hapus Event atau Heat terpilih" Click="BtnDeleteSelected_Click"/>
                     </Grid>
@@ -428,7 +426,7 @@
                         </Grid>
                     </Border>
 
-                    <!-- 2. Heat Header & Clear Heat Action -->
+                    <!-- 2. Heat Header & Actions -->
                     <Grid Grid.Row="1" Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -436,15 +434,21 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock x:Name="txtSelectedHeatTitle" Text="Pilih Event dan Heat" 
+                            <TextBlock x:Name="txtSelectedHeatTitle" Text="Select Event and Heat" 
                                        FontSize="14" FontWeight="Bold" Foreground="#0F172A"/>
-                            <TextBlock x:Name="txtSelectedHeatSubtitle" Text="Daftar atlet pada Lintasan 1 - 9, 0" 
+                            <TextBlock x:Name="txtSelectedHeatSubtitle" Text="List of athletes on the track 1 - 9, 0" 
                                        FontSize="12" Foreground="#475569" Margin="0,2,0,0"/>
                         </StackPanel>
 
-                        <Button x:Name="btnClearHeat" Grid.Column="1" Content="Empty Heat"
-                                Style="{StaticResource CancelOutlinedButtonStyle}" Padding="10,5" FontSize="11.5"
-                                Click="BtnClearHeat_Click" ToolTip="Kosongkan seluruh atlet pada heat ini"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="btnAddNewOwsSwimmer" Content="Add New Athlete"
+                                    Style="{StaticResource ActionMiniButtonStyle}" Background="#0284C7"
+                                    Padding="10,5" Margin="0,0,8,0" Visibility="Collapsed"
+                                    Click="BtnAddNewOwsSwimmer_Click" ToolTip="Add a new athlete to this heat"/>
+                            <Button x:Name="btnClearHeat" Content="Empty Heat"
+                                    Style="{StaticResource CancelOutlinedButtonStyle}" Padding="10,5" FontSize="11.5"
+                                    Click="BtnClearHeat_Click" ToolTip="Clear all athletes from this heat"/>
+                        </StackPanel>
                     </Grid>
 
                     <!-- 3. DataGrid of Lanes (Lanes 1 - 10) -->
@@ -455,7 +459,7 @@
                               GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E2E8F0"
                               ColumnHeaderHeight="32" RowHeight="34"
                               CellEditEnding="DgHeatLanes_CellEditEnding"
-                              FontSize="12.5">
+                              FontSize="12.5" SelectionChanged="dgHeatLanes_SelectionChanged">
                         <DataGrid.Resources>
                             <!-- Override system highlight brushes so row and cell selections use soft sky-blue with high-contrast dark text -->
                             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#E0F2FE"/>
@@ -519,8 +523,8 @@
                             </Style>
                         </DataGrid.ColumnHeaderStyle>
                         <DataGrid.Columns>
-                            <!-- Lane Number -->
-                            <DataGridTextColumn Header="LN" Binding="{Binding LaneNumber}" Width="46" IsReadOnly="True">
+                            <!-- Lane / BIB Number -->
+                            <DataGridTextColumn x:Name="colLaneOrBib" Header="LN" Binding="{Binding BibNumber, UpdateSourceTrigger=PropertyChanged}" Width="56" IsReadOnly="True">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -529,6 +533,18 @@
                                         <Setter Property="Foreground" Value="#0F172A"/>
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
+                                <DataGridTextColumn.EditingElementStyle>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                        <Setter Property="VerticalAlignment" Value="Center"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                        <Setter Property="Padding" Value="4,2"/>
+                                        <Setter Property="Background" Value="#FFFFFF"/>
+                                        <Setter Property="Foreground" Value="#0F172A"/>
+                                        <Setter Property="BorderBrush" Value="#0284C7"/>
+                                        <Setter Property="BorderThickness" Value="1.5"/>
+                                    </Style>
+                                </DataGridTextColumn.EditingElementStyle>
                             </DataGridTextColumn>
 
                             <!-- Athlete Name -->
@@ -554,7 +570,7 @@
                             </DataGridTextColumn>
 
                             <!-- Club -->
-                            <DataGridTextColumn Header="CLUB" Binding="{Binding Club, UpdateSourceTrigger=PropertyChanged}" Width="190">
+                            <DataGridTextColumn Header="CLUB" Binding="{Binding Club, UpdateSourceTrigger=PropertyChanged}" Width="150">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="VerticalAlignment" Value="Center"/>
@@ -654,7 +670,7 @@
                             </DataGridTextColumn>
 
                             <!-- Action: Clear Lane -->
-                            <DataGridTemplateColumn Header="AKSI" Width="65">
+                            <DataGridTemplateColumn Header="ACTION" Width="65">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Button Content="Clear" Style="{StaticResource ClearLaneButtonStyle}"
@@ -678,9 +694,9 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="Batal" Style="{StaticResource CancelOutlinedButtonStyle}" 
+                    <Button Content="Cancel" Style="{StaticResource CancelOutlinedButtonStyle}" 
                             Margin="0,0,8,0" Click="BtnCancel_Click"/>
-                    <Button Content="Terapkan &amp; Muat ke Sistem" Style="{StaticResource HeaderButtonStyle}" Background="#16A34A" 
+                    <Button Content="Apply &amp; Load" Style="{StaticResource HeaderButtonStyle}" Background="#16A34A" 
                             Click="BtnApply_Click"/>
                 </StackPanel>
             </Grid>

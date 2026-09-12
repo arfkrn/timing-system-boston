@@ -48,6 +48,7 @@ namespace boston_timing_system.Views
     {
         private readonly CompetitionMeetModel _meet;
         private readonly ExcelMeetDataService _excelService;
+        private readonly TimingMode _timingMode;
         private readonly ObservableCollection<EventCheckItem> _eventItems = new();
 
         public IReadOnlyList<EventCheckItem> EventItems => _eventItems;
@@ -56,12 +57,13 @@ namespace boston_timing_system.Views
         public bool ExportSuccessful { get; private set; }
         public string? ExportedFilePath { get; private set; }
 
-        public ExportSelectionDialog(CompetitionMeetModel meet, ExcelMeetDataService excelService)
+        public ExportSelectionDialog(CompetitionMeetModel meet, ExcelMeetDataService excelService, TimingMode timingMode = TimingMode.Pool)
         {
             InitializeComponent();
 
             _meet = meet ?? throw new ArgumentNullException(nameof(meet));
             _excelService = excelService ?? new ExcelMeetDataService();
+            _timingMode = timingMode;
 
             PopulateEvents();
         }
@@ -150,17 +152,20 @@ namespace boston_timing_system.Views
 
                 if (selectedEventNumbers.Count == _meet.Events.Count)
                 {
-                    options = MeetExportOptions.CreateFullMeet();
-                    suggestedFileName = $"{_meet.MeetName.Replace(" ", "_")}_AllResults_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+                    options = MeetExportOptions.CreateFullMeet(_timingMode);
+                    suggestedFileName = _timingMode == TimingMode.OpenWater
+                        ? $"{_meet.MeetName.Replace(" ", "_")}_OWS_Results_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
+                        : $"{_meet.MeetName.Replace(" ", "_")}_AllResults_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
                 }
                 else
                 {
-                    options = MeetExportOptions.CreateSelectedEvents(selectedEventNumbers);
+                    options = MeetExportOptions.CreateSelectedEvents(selectedEventNumbers, _timingMode);
                     suggestedFileName = selectedEventNumbers.Count == 1
                         ? $"{_meet.MeetName.Replace(" ", "_")}_Event{selectedEventNumbers[0]}_Results_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
                         : $"{_meet.MeetName.Replace(" ", "_")}_Selected_{selectedEventNumbers.Count}Events_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
                 }
 
+                string selectedSavePath = string.Empty;
                 var saveDialog = new SaveFileDialog
                 {
                     Filter = "Excel Workbook (*.xlsx)|*.xlsx",
@@ -170,6 +175,7 @@ namespace boston_timing_system.Views
 
                 if (saveDialog.ShowDialog() == true)
                 {
+                    selectedSavePath = saveDialog.FileName;
                     btnExportNow.IsEnabled = false;
                     btnCancel.IsEnabled = false;
                     Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
@@ -200,8 +206,19 @@ namespace boston_timing_system.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Gagal mengekspor hasil ke Excel:\n\n{ex.Message}", 
-                    "Ekspor Gagal", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (ex is IOException ioEx && ((ioEx.HResult & 0xFFFF) == 32 || (ioEx.HResult & 0xFFFF) == 33 || ioEx.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase) || ioEx.Message.Contains("digunakan oleh proses lain", StringComparison.OrdinalIgnoreCase)))
+                {
+                    MessageBox.Show(
+                        "File Excel saat ini masih dibuka di program lain (misalnya Microsoft Excel).\n\nSilakan tutup file tersebut di Microsoft Excel terlebih dahulu, atau pilih nama file yang berbeda.",
+                        "File Excel Sedang Dibuka",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                else
+                {
+                    MessageBox.Show($"Gagal mengekspor hasil ke Excel:\n\n{ex.Message}", 
+                        "Ekspor Gagal", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
 
