@@ -68,7 +68,7 @@ namespace boston_timing_system
             // 3. Display timer for UI rendering (~30 FPS)
             _displayTimer = new DispatcherTimer(DispatcherPriority.Render)
             {
-                Interval = TimeSpan.FromMilliseconds(30)
+                Interval = TimeSpan.FromMilliseconds(50)
             };
             _displayTimer.Tick += HandleDisplayTimerTick;
 
@@ -529,16 +529,19 @@ namespace boston_timing_system
 
         private void AddLogMessage(string message)
         {
-            string timestamp = DateTime.Now.ToString("HH.mm.ss");
-            MessageLogs.Insert(0, $"{timestamp}  {message}");
-            while (MessageLogs.Count > 100)
+            RunOnUi(() =>
             {
-                MessageLogs.RemoveAt(MessageLogs.Count - 1);
-            }
-            if (txtServerLog != null)
-            {
-                txtServerLog.Text = message;
-            }
+                string timestamp = DateTime.Now.ToString("HH.mm.ss");
+                MessageLogs.Insert(0, $"{timestamp}  {message}");
+                while (MessageLogs.Count > 100)
+                {
+                    MessageLogs.RemoveAt(MessageLogs.Count - 1);
+                }
+                if (txtServerLog != null)
+                {
+                    txtServerLog.Text = message;
+                }
+            });
         }
 
         private void UpdateMobileConnectIndicators()

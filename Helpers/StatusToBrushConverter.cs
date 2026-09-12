@@ -8,20 +8,39 @@ namespace boston_timing_system.Helpers
 {
     public class StatusToBrushConverter : IValueConverter
     {
+        private static readonly SolidColorBrush BlueBrush = CreateFrozenBrush("#3B82F6");
+        private static readonly SolidColorBrush GreenBrush = CreateFrozenBrush("#10B981");
+        private static readonly SolidColorBrush AmberBrush = CreateFrozenBrush("#F59E0B");
+        private static readonly SolidColorBrush DarkAmberBrush = CreateFrozenBrush("#D97706");
+        private static readonly SolidColorBrush RedBrush = CreateFrozenBrush("#EF4444");
+        private static readonly SolidColorBrush DarkRedBrush = CreateFrozenBrush("#DC2626");
+        private static readonly SolidColorBrush GrayBrush = CreateFrozenBrush("#6B7280");
+        private static readonly SolidColorBrush LightGrayBrush = CreateFrozenBrush("#94A3B8");
+        private static readonly SolidColorBrush DarkGrayBrush = CreateFrozenBrush("#374151");
+        private static readonly SolidColorBrush DefaultBrush = CreateFrozenBrush("#4B5563");
+        private static readonly SolidColorBrush TransparentBrush = CreateFrozenBrush("#00000000");
+
+        private static SolidColorBrush CreateFrozenBrush(string hex)
+        {
+            var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+            brush.Freeze();
+            return brush;
+        }
+
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is LaneStatus status)
             {
                 return status switch
                 {
-                    LaneStatus.Ready => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")),     // Blue
-                    LaneStatus.Running => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981")),   // Green
-                    LaneStatus.Finished => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")),  // Amber / Gold
-                    LaneStatus.DNS => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")),       // Gray
-                    LaneStatus.DNF => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),       // Red
-                    LaneStatus.DQ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")),        // Dark Red
-                    LaneStatus.OFF => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151")),       // Muted Dark Gray
-                    _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4B5563"))
+                    LaneStatus.Ready => BlueBrush,
+                    LaneStatus.Running => GreenBrush,
+                    LaneStatus.Finished => AmberBrush,
+                    LaneStatus.DNS => GrayBrush,
+                    LaneStatus.DNF => RedBrush,
+                    LaneStatus.DQ => DarkRedBrush,
+                    LaneStatus.OFF => DarkGrayBrush,
+                    _ => DefaultBrush
                 };
             }
 
@@ -29,10 +48,10 @@ namespace boston_timing_system.Helpers
             {
                 return raceStatus switch
                 {
-                    RaceStatus.Ready => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3B82F6")),
-                    RaceStatus.Running => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981")),
-                    RaceStatus.Finished => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B")),
-                    _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280"))
+                    RaceStatus.Ready => BlueBrush,
+                    RaceStatus.Running => GreenBrush,
+                    RaceStatus.Finished => AmberBrush,
+                    _ => GrayBrush
                 };
             }
 
@@ -40,15 +59,15 @@ namespace boston_timing_system.Helpers
             {
                 return statusStr switch
                 {
-                    "DQ" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")),
-                    "DNS" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706")),
-                    "DNF" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
-                    "OFF" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6B7280")),
-                    _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8"))
+                    "DQ" => DarkRedBrush,
+                    "DNS" => DarkAmberBrush,
+                    "DNF" => RedBrush,
+                    "OFF" => GrayBrush,
+                    _ => LightGrayBrush
                 };
             }
 
-            return new SolidColorBrush(Colors.Transparent);
+            return TransparentBrush;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

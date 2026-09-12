@@ -17,6 +17,7 @@ namespace boston_timing_system.Services
         private readonly RaceTimingEngine _engine;
         private WebSocketServer? _server;
         private readonly ConcurrentDictionary<IWebSocketConnection, ConnectedClient> _clients = new();
+        private readonly ConcurrentDictionary<string, CachedSession> _cachedSessions = new();
         private readonly object _syncLock = new();
 
         private bool _isRunning;
@@ -200,15 +201,25 @@ namespace boston_timing_system.Services
         private void CheckHeartbeats(object? state)
         {
             var now = DateTime.UtcNow;
+
+            // 1. Clean up expired reconnect sessions older than 60 seconds
+            foreach (var key in _cachedSessions.Keys.ToList())
+            {
+                if (_cachedSessions.TryGetValue(key, out var cached) && (now - cached.DisconnectedAt).TotalSeconds > 60)
+                {
+                    _cachedSessions.TryRemove(key, out _);
+                }
+            }
+
+            // 2. Heartbeat check with 8-second tolerance for pool Wi-Fi RF jitter
             foreach (var pair in _clients.ToList())
             {
                 var socket = pair.Key;
                 var client = pair.Value;
 
-                // If no message or ping received within 3 seconds, mark as timed out
-                if ((now - client.LastSeenUtc).TotalSeconds > 3)
+                if ((now - client.LastSeenUtc).TotalSeconds > 8)
                 {
-                    Log($"Device connection timed out: {client.IpAddress} ({client.Role}, Lane {client.AssignedLane})");
+                    Log($"[HEARTBEAT TIMEOUT >8s] Device connection timed out: {client.IpAddress} ({client.Role}, Lane {client.AssignedLane})");
                     try
                     {
                         socket.Close();
@@ -217,9 +228,7 @@ namespace boston_timing_system.Services
                     {
                         // Ignore socket close failure
                     }
-
-                    // Directly remove and clean up disconnected client
-                    HandleSocketClose(socket);
+                    // Do NOT call HandleSocketClose(socket) manually here; Fleck automatically triggers socket.OnClose
                 }
             }
         }
@@ -241,6 +250,19 @@ namespace boston_timing_system.Services
             if (_clients.TryRemove(socket, out var client))
             {
                 Log($"Device disconnected: {client.IpAddress} (Role: {client.Role}, Lane: {client.AssignedLane})");
+
+                // Cache active authenticated session for 60s grace period to allow instant reconnect
+                if (client.IsAuthenticated && client.Role != ClientRole.Unknown && !string.IsNullOrWhiteSpace(client.IpAddress))
+                {
+                    _cachedSessions[client.IpAddress] = new CachedSession
+                    {
+                        Role = client.Role,
+                        AssignedLane = client.AssignedLane,
+                        DeviceName = client.DeviceName,
+                        IsAuthenticated = client.IsAuthenticated,
+                        DisconnectedAt = DateTime.UtcNow
+                    };
+                }
 
                 // Immediately sync referee status on all lanes so indicators turn off
                 UpdateAllLaneRefereeStatuses();
@@ -338,7 +360,17 @@ namespace boston_timing_system.Services
                             double latencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
                             TimeSpan? compensatedTime = null;
 
-                            if (latencyMs > 0)
+                            if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
+                            {
+                                TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value);
+                                if (clientElapsed > _engine.Elapsed)
+                                {
+                                    clientElapsed = _engine.Elapsed;
+                                }
+                                compensatedTime = clientElapsed;
+                                Log($"Command 'STOP_LANE' Lane {laneToStop} from {client.Role} ({client.IpAddress}) (Using Client Stopwatch Elapsed: {clientElapsed:mm\\:ss\\.ff})");
+                            }
+                            else if (latencyMs > 0)
                             {
                                 TimeSpan arrival = _engine.Elapsed;
                                 compensatedTime = arrival - TimeSpan.FromMilliseconds(latencyMs);
@@ -367,7 +399,16 @@ namespace boston_timing_system.Services
                     case "STOP_ALL_ACTIVE":
                         double activeLatencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
                         TimeSpan? compActiveTime = null;
-                        if (activeLatencyMs > 0)
+                        if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
+                        {
+                            TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value);
+                            if (clientElapsed > _engine.Elapsed)
+                            {
+                                clientElapsed = _engine.Elapsed;
+                            }
+                            compActiveTime = clientElapsed;
+                        }
+                        else if (activeLatencyMs > 0)
                         {
                             TimeSpan arrival = _engine.Elapsed;
                             compActiveTime = arrival - TimeSpan.FromMilliseconds(activeLatencyMs);
@@ -384,7 +425,17 @@ namespace boston_timing_system.Services
                             double latencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
                             TimeSpan? compensatedTime = null;
 
-                            if (latencyMs > 0)
+                            if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
+                            {
+                                TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value);
+                                if (clientElapsed > _engine.Elapsed)
+                                {
+                                    clientElapsed = _engine.Elapsed;
+                                }
+                                compensatedTime = clientElapsed;
+                                Log($"Command 'RECORD_SPLIT' Lane {laneForSplit} from {client.IpAddress} (Using Client Stopwatch Elapsed: {clientElapsed:mm\\:ss\\.ff})");
+                            }
+                            else if (latencyMs > 0)
                             {
                                 TimeSpan arrival = _engine.Elapsed;
                                 compensatedTime = arrival - TimeSpan.FromMilliseconds(latencyMs);
@@ -441,6 +492,20 @@ namespace boston_timing_system.Services
                 {
                     parsedRole = role;
                 }
+            }
+
+            // Restore from 60s cached session if client reconnected without explicit role or after brief Wi-Fi drop
+            if (_cachedSessions.TryRemove(client.IpAddress, out var cached) && (DateTime.UtcNow - cached.DisconnectedAt).TotalSeconds <= 60)
+            {
+                if (parsedRole == ClientRole.Unknown)
+                {
+                    parsedRole = cached.Role;
+                }
+                if (!command.LaneNumber.HasValue && cached.AssignedLane.HasValue)
+                {
+                    client.AssignedLane = cached.AssignedLane;
+                }
+                Log($"[SESSION RESTORED] Device {client.IpAddress} restored session as {cached.Role} (Lane {cached.AssignedLane})");
             }
 
             // Authentication verification using 4-digit server access code
@@ -684,7 +749,10 @@ namespace boston_timing_system.Services
                 {
                     if (client.IsAvailable)
                     {
-                        client.Send(json);
+                        lock (client)
+                        {
+                            client.Send(json);
+                        }
                     }
                 }
                 catch
@@ -701,7 +769,10 @@ namespace boston_timing_system.Services
                 if (socket.IsAvailable)
                 {
                     string json = JsonSerializer.Serialize(serverEvent, JsonOptions);
-                    socket.Send(json);
+                    lock (socket)
+                    {
+                        socket.Send(json);
+                    }
                 }
             }
             catch
@@ -726,5 +797,13 @@ namespace boston_timing_system.Services
             _engine.LaneSplitRecorded -= HandleEngineLaneSplitRecorded;
             _engine.Tick -= HandleEngineTick;
         }
+    }
+    public class CachedSession
+    {
+        public ClientRole Role { get; set; } = ClientRole.Unknown;
+        public int? AssignedLane { get; set; }
+        public string DeviceName { get; set; } = string.Empty;
+        public bool IsAuthenticated { get; set; }
+        public DateTime DisconnectedAt { get; set; } = DateTime.UtcNow;
     }
 }

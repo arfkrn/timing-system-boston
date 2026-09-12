@@ -105,9 +105,18 @@ namespace boston_timing_system.Models
                 .OrderBy(l => l.FinishTime!.Value)
                 .ToList();
 
+            int currentRank = 1;
             for (int i = 0; i < finishedLanes.Count; i++)
             {
-                finishedLanes[i].Rank = i + 1;
+                if (i > 0 && finishedLanes[i].FinishTime == finishedLanes[i - 1].FinishTime)
+                {
+                    finishedLanes[i].Rank = finishedLanes[i - 1].Rank;
+                }
+                else
+                {
+                    finishedLanes[i].Rank = currentRank;
+                }
+                currentRank++;
             }
 
             OnPropertyChanged(nameof(HasResults));

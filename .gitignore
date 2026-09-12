@@ -72,3 +72,6 @@ $RECYCLE.BIN/
 
 # macOS Files
 .DS_Store
+
+# Markdown Documentation Files
+*.md

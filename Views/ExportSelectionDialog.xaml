@@ -194,7 +194,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="Batal" Style="{StaticResource CancelButtonStyle}" 
+                    <Button x:Name="btnCancel" Content="Batal" Style="{StaticResource CancelButtonStyle}" 
                             Margin="0,0,10,0" Click="BtnCancel_Click"/>
                     <Button x:Name="btnExportNow" Content="SIMPAN KE EXCEL" 
                             Style="{StaticResource HeaderButtonStyle}" 

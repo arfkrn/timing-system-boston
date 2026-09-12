@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -128,7 +129,7 @@ namespace boston_timing_system.Views
             }
         }
 
-        private void BtnExportNow_Click(object sender, RoutedEventArgs e)
+        private async void BtnExportNow_Click(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -169,16 +170,32 @@ namespace boston_timing_system.Views
 
                 if (saveDialog.ShowDialog() == true)
                 {
-                    _excelService.ExportResultsToExcel(_meet, saveDialog.FileName, options);
+                    btnExportNow.IsEnabled = false;
+                    btnCancel.IsEnabled = false;
+                    Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
 
-                    ExportSuccessful = true;
-                    ExportedFilePath = saveDialog.FileName;
+                    try
+                    {
+                        await System.Threading.Tasks.Task.Run(() =>
+                        {
+                            _excelService.ExportResultsToExcel(_meet, saveDialog.FileName, options);
+                        });
 
-                    MessageBox.Show($"Hasil balapan berhasil diekspor ke file Excel:\n\n{saveDialog.FileName}", 
-                        "Ekspor Berhasil", MessageBoxButton.OK, MessageBoxImage.Information);
+                        ExportSuccessful = true;
+                        ExportedFilePath = saveDialog.FileName;
 
-                    DialogResult = true;
-                    Close();
+                        MessageBox.Show($"Hasil balapan berhasil diekspor ke file Excel:\n\n{saveDialog.FileName}", 
+                            "Ekspor Berhasil", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                        DialogResult = true;
+                        Close();
+                    }
+                    finally
+                    {
+                        Mouse.OverrideCursor = null;
+                        btnExportNow.IsEnabled = true;
+                        btnCancel.IsEnabled = true;
+                    }
                 }
             }
             catch (Exception ex)

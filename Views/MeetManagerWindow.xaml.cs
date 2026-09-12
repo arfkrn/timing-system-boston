@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using System;
 using System.IO;
 using System.Linq;
@@ -352,7 +353,7 @@ namespace boston_timing_system.Views
             }
         }
 
-        private void BtnImportExcel_Click(object sender, RoutedEventArgs e)
+        private async void BtnImportExcel_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new OpenFileDialog
             {
@@ -362,9 +363,11 @@ namespace boston_timing_system.Views
 
             if (dialog.ShowDialog() == true)
             {
+                btnImportExcel.IsEnabled = false;
+                Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
                 try
                 {
-                    var importedMeet = _excelService.ImportMeetFromExcel(dialog.FileName);
+                    var importedMeet = await System.Threading.Tasks.Task.Run(() => _excelService.ImportMeetFromExcel(dialog.FileName));
                     Meet = importedMeet;
 
                     BindMeetData();
@@ -377,10 +380,15 @@ namespace boston_timing_system.Views
                     MessageBox.Show($"Failed to import Excel file:\n\n{ex.Message}", 
                         "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
+                finally
+                {
+                    Mouse.OverrideCursor = null;
+                    btnImportExcel.IsEnabled = true;
+                }
             }
         }
 
-        private void BtnDownloadTemplate_Click(object sender, RoutedEventArgs e)
+        private async void BtnDownloadTemplate_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new SaveFileDialog
             {
@@ -391,15 +399,22 @@ namespace boston_timing_system.Views
 
             if (dialog.ShowDialog() == true)
             {
+                btnDownloadTemplate.IsEnabled = false;
+                Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
                 try
                 {
-                    _excelService.GenerateSampleTemplate(dialog.FileName);
+                    await System.Threading.Tasks.Task.Run(() => _excelService.GenerateSampleTemplate(dialog.FileName));
                     MessageBox.Show($"Excel template saved successfully to:\n{dialog.FileName}\n\nYou can fill in your meet data and import it anytime.", 
                         "Template Created", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show($"Failed to create template:\n{ex.Message}", "Template Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                finally
+                {
+                    Mouse.OverrideCursor = null;
+                    btnDownloadTemplate.IsEnabled = true;
                 }
             }
         }

@@ -35,6 +35,12 @@ namespace boston_timing_system.Models
         public long? ClientTimestamp { get; set; }
 
         /// <summary>
+        /// Exact race elapsed time in milliseconds captured locally by client stopwatch when button was pressed (crucial for offline queue)
+        /// </summary>
+        [JsonPropertyName("elapsedTimeMs")]
+        public long? ElapsedTimeMs { get; set; }
+
+        /// <summary>
         /// One-way latency in milliseconds estimated by client from ping-pong RTT
         /// </summary>
         [JsonPropertyName("estimatedLatencyMs")]
