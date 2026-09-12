@@ -10,6 +10,80 @@ namespace boston_timing_system.Services
 {
     public class ExcelMeetDataService
     {
+        /// <summary>
+        /// Inspects the header row of an Excel file to determine whether it is a Pool or OWS
+        /// start-list format, without performing a full import.
+        /// Returns <see langword="null"/> if the file format cannot be determined.
+        /// </summary>
+        /// <param name="filePath">Full path to the .xlsx file to probe.</param>
+        /// <returns>
+        /// <see cref="TimingMode.OpenWater"/> — file has a BibNumber / No Bib column (OWS format).<br/>
+        /// <see cref="TimingMode.Pool"/> — file has both Heat and Lane columns (Pool format).<br/>
+        /// <see langword="null"/> — header columns are ambiguous or missing.
+        /// </returns>
+        public TimingMode? DetectTimingMode(string filePath)
+        {
+            if (!File.Exists(filePath))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var workbook = new XLWorkbook(stream);
+                var worksheet = workbook.Worksheets.FirstOrDefault();
+                if (worksheet == null) return null;
+
+                // Scan rows 1–10 for the header row (same heuristic as ImportMeetFromExcel)
+                int maxScanRow = Math.Min(10, worksheet.LastRowUsed()?.RowNumber() ?? 3);
+                for (int r = 1; r <= maxScanRow; r++)
+                {
+                    var row = worksheet.Row(r);
+
+                    // OWS signature: has a BibNumber/No Bib column
+                    int colBib = FindColumnIndex(row,
+                        "BibNumber", "Bib Number", "Bib#", "BIB",
+                        "No Bib", "No. Bib", "Bib No", "Bib No.",
+                        "Nomor Bib", "No Dada", "Nomor Dada");
+
+                    // Pool signature: has both Heat AND Lane columns
+                    int colHeat = FindColumnIndex(row,
+                        "HeatNumber", "Heat No", "Heat No.", "Heat#",
+                        "Heat", "No Heat", "Nomor Heat", "Seri");
+                    int colLane = FindColumnIndex(row,
+                        "LaneNumber", "Lane No", "Lane No.", "Lane#",
+                        "Lane", "Lintasan", "LN", "No Lane", "No Lintasan");
+
+                    // Also need EventNumber column to confirm this is really a header row
+                    int colEvent = FindColumnIndex(row,
+                        "EventNumber", "Event No", "Event No.", "Event#",
+                        "Event", "No Event", "Nomor Event");
+
+                    if (colEvent <= 0) continue; // not a recognized header row, keep scanning
+
+                    if (colBib > 0)
+                    {
+                        return TimingMode.OpenWater;
+                    }
+
+                    if (colHeat > 0 && colLane > 0)
+                    {
+                        return TimingMode.Pool;
+                    }
+
+                    // Header row found but columns don't match either mode
+                    return null;
+                }
+
+                return null; // no recognizable header found
+            }
+            catch
+            {
+                return null; // treat unreadable files as unknown format
+            }
+        }
+
         public CompetitionMeetModel ImportMeetFromExcel(string filePath, TimingMode mode = TimingMode.Pool)
         {
             if (!File.Exists(filePath))

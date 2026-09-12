@@ -445,54 +445,122 @@ namespace boston_timing_system.Views
 
         private async void BtnImportExcel_Click(object sender, RoutedEventArgs e)
         {
+            string modeLabel = _timingMode == TimingMode.OpenWater ? "Open Water (OWS)" : "Pool Swimming";
             var dialog = new OpenFileDialog
             {
                 Filter = "Excel Workbook (*.xlsx)|*.xlsx",
-                Title = _timingMode == TimingMode.OpenWater 
-                    ? "Import Open Water Swimming Start List" 
+                Title = _timingMode == TimingMode.OpenWater
+                    ? "Import Open Water Swimming Start List"
                     : "Import Swimming Meet Start List"
             };
 
-            if (dialog.ShowDialog() == true)
+            if (dialog.ShowDialog() != true)
             {
-                btnImportExcel.IsEnabled = false;
-                Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
-                try
+                return;
+            }
+
+            string filePath = dialog.FileName;
+            string fileName = System.IO.Path.GetFileName(filePath);
+
+            btnImportExcel.IsEnabled = false;
+            Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+
+            try
+            {
+                // --- Step 1: Detect the file's timing mode before doing a full import ---
+                TimingMode? detectedMode = await System.Threading.Tasks.Task.Run(
+                    () => _excelService.DetectTimingMode(filePath));
+
+                if (detectedMode == null)
                 {
-                    var importedMeet = await System.Threading.Tasks.Task.Run(() => _excelService.ImportMeetFromExcel(dialog.FileName, _timingMode));
-                    Meet = importedMeet;
-
-                    BindMeetData();
-
-                    int totalParticipants = Meet.Events.SelectMany(ev => ev.Heats).SelectMany(h => h.Lanes).Count(l => !string.IsNullOrWhiteSpace(l.SwimmerName));
-                    string participantLabel = _timingMode == TimingMode.OpenWater ? "BIB Participants" : "Athlete";
-
-                    MessageBox.Show($"Start list imported successfully!\n\nEvents: {Meet.Events.Count}\nTotal Heats: {Meet.Events.Sum(ev => ev.Heats.Count)}\nTotal {participantLabel}: {totalParticipants}",
-                        "Import Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                    // File has no recognizable header — unknown format
+                    MessageBox.Show(
+                        $"File \"{fileName}\" tidak dapat dikenali formatnya.\n\n" +
+                        $"Pastikan file menggunakan template yang sesuai:\n" +
+                        $"  • Mode Pool  → kolom wajib: Event No, Heat, Lane, Athlete\n" +
+                        $"  • Mode OWS   → kolom wajib: Event No, No Bib, Athlete\n\n" +
+                        $"Gunakan tombol 'Download Template' untuk mendapatkan template yang benar.",
+                        "Format File Tidak Dikenali",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
                 }
-                catch (Exception ex)
+
+                if (detectedMode != _timingMode)
                 {
-                    if (IsFileLockedException(ex))
-                    {
-                        MessageBox.Show(
-                            $"File '{System.IO.Path.GetFileName(dialog.FileName)}' It is currently open in another program. \n\nPlease close the file in the other program first, then try again.",
-                            "The Excel file is currently open.",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Warning);
-                    }
-                    else
-                    {
-                        MessageBox.Show($"Failed to import Excel file:\n\n{ex.Message}", 
-                            "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
+                    // Format file tidak cocok dengan mode aktif
+                    string fileModeName  = detectedMode == TimingMode.OpenWater ? "Open Water (OWS)" : "Pool Swimming";
+                    string requiredCols  = _timingMode == TimingMode.OpenWater
+                        ? "Event No, No Bib, Athlete"
+                        : "Event No, Heat, Lane, Athlete";
+                    string detectedCols  = detectedMode == TimingMode.OpenWater
+                        ? "Event No, No Bib, Athlete"
+                        : "Event No, Heat, Lane, Athlete";
+
+                    MessageBox.Show(
+                        $"File \"{fileName}\" tidak dapat diimport.\n\n" +
+                        $"Mode aktif saat ini : {modeLabel}\n" +
+                        $"Format file terdeteksi : {fileModeName}\n\n" +
+                        $"File ini berformat {fileModeName} (kolom: {detectedCols}),\n" +
+                        $"sedangkan mode {modeLabel} memerlukan kolom: {requiredCols}.\n\n" +
+                        $"Silakan:\n" +
+                        $"  • Pilih file Excel yang sesuai dengan mode {modeLabel}, atau\n" +
+                        $"  • Ganti mode timing di layar utama sebelum mengimport file ini.",
+                        $"Format File Tidak Sesuai Mode ({modeLabel})",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    return;
                 }
-                finally
+
+                // --- Step 2: Mode matched — proceed with full import ---
+                var importedMeet = await System.Threading.Tasks.Task.Run(
+                    () => _excelService.ImportMeetFromExcel(filePath, _timingMode));
+                Meet = importedMeet;
+                BindMeetData();
+
+                int totalParticipants = Meet.Events
+                    .SelectMany(ev => ev.Heats)
+                    .SelectMany(h => h.Lanes)
+                    .Count(l => !string.IsNullOrWhiteSpace(l.SwimmerName));
+                string participantLabel = _timingMode == TimingMode.OpenWater ? "BIB Participants" : "Athlete";
+
+                MessageBox.Show(
+                    $"Start list imported successfully!\n\n" +
+                    $"Mode      : {modeLabel}\n" +
+                    $"Events    : {Meet.Events.Count}\n" +
+                    $"Total Heats    : {Meet.Events.Sum(ev => ev.Heats.Count)}\n" +
+                    $"Total {participantLabel}: {totalParticipants}",
+                    "Import Successful",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                if (IsFileLockedException(ex))
                 {
-                    Mouse.OverrideCursor = null;
-                    btnImportExcel.IsEnabled = true;
+                    MessageBox.Show(
+                        $"File '{fileName}' sedang dibuka di program lain.\n\n" +
+                        $"Tutup file tersebut terlebih dahulu, lalu coba lagi.",
+                        "File Excel Sedang Terbuka",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        $"Gagal mengimport file Excel:\n\n{ex.Message}",
+                        "Import Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
                 }
             }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+                btnImportExcel.IsEnabled = true;
+            }
         }
+
 
         private async void BtnDownloadTemplate_Click(object sender, RoutedEventArgs e)
         {
