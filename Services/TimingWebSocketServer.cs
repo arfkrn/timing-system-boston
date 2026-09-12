@@ -1,0 +1,730 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using Fleck;
+using boston_timing_system.Core;
+using boston_timing_system.Helpers;
+using boston_timing_system.Models;
+
+namespace boston_timing_system.Services
+{
+    public class TimingWebSocketServer : ObservableObject, IDisposable
+    {
+        private readonly RaceTimingEngine _engine;
+        private WebSocketServer? _server;
+        private readonly ConcurrentDictionary<IWebSocketConnection, ConnectedClient> _clients = new();
+        private readonly object _syncLock = new();
+
+        private bool _isRunning;
+        private int _totalClients;
+        private int _startersCount;
+        private int _refereesCount;
+        private int _chiefsCount;
+        private int _spectatorsCount;
+        private long _lastTickTimestamp;
+        private Timer? _heartbeatWatchdogTimer;
+
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
+
+        public int Port { get; }
+        public string LocalIpAddress { get; }
+        public string ServerUri => $"ws://{LocalIpAddress}:{Port}";
+        public bool IsRunning
+        {
+            get => _isRunning;
+            private set => SetProperty(ref _isRunning, value);
+        }
+
+        public string CurrentMeetName { get; set; } = "Swimming Meet 2026";
+        public int CurrentEventNumber { get; set; } = 1;
+        public string CurrentEventName { get; set; } = "50m Freestyle";
+        public int CurrentHeatNumber { get; set; } = 1;
+
+        public int TotalClients
+        {
+            get => _totalClients;
+            private set => SetProperty(ref _totalClients, value);
+        }
+
+        public int StartersCount
+        {
+            get => _startersCount;
+            private set => SetProperty(ref _startersCount, value);
+        }
+
+        public int RefereesCount
+        {
+            get => _refereesCount;
+            private set => SetProperty(ref _refereesCount, value);
+        }
+
+        public int ChiefsCount
+        {
+            get => _chiefsCount;
+            private set => SetProperty(ref _chiefsCount, value);
+        }
+
+        public int SpectatorsCount
+        {
+            get => _spectatorsCount;
+            private set => SetProperty(ref _spectatorsCount, value);
+        }
+
+        private string _accessCode = string.Empty;
+        public string AccessCode
+        {
+            get => _accessCode;
+            private set => SetProperty(ref _accessCode, value);
+        }
+
+        /// <summary>
+        /// Generates a random 4-digit code (1000 to 9999) from the server
+        /// </summary>
+        public static string GenerateRandomAccessCode()
+        {
+            return Random.Shared.Next(1000, 10000).ToString("D4");
+        }
+
+        /// <summary>
+        /// Regenerates a fresh random 4-digit access code and notifies connected clients
+        /// </summary>
+        public string RegenerateAccessCode()
+        {
+            AccessCode = GenerateRandomAccessCode();
+            Broadcast(new ServerEvent
+            {
+                Event = "ACCESS_CODE_ROTATED",
+                AccessCode = AccessCode,
+                Message = $"Server access code updated: {AccessCode}"
+            });
+            Log($"[SECURITY] New 4-digit Access Code generated: {AccessCode}");
+            return AccessCode;
+        }
+
+        public event Action<string>? LogReceived;
+
+        public TimingWebSocketServer(RaceTimingEngine engine, int port = 8181)
+        {
+            _engine = engine;
+            Port = port;
+            LocalIpAddress = NetworkHelper.GetLocalIpAddress();
+            AccessCode = GenerateRandomAccessCode();
+
+            // Hook into engine events to broadcast to all connected phones
+            _engine.RaceStarted += HandleEngineRaceStarted;
+            _engine.RaceStopped += HandleEngineRaceStopped;
+            _engine.RaceReset += HandleEngineRaceReset;
+            _engine.LaneFinished += HandleEngineLaneFinished;
+            _engine.LaneStatusChanged += HandleEngineLaneStatusChanged;
+            _engine.LaneSplitRecorded += HandleEngineLaneSplitRecorded;
+            _engine.Tick += HandleEngineTick;
+        }
+
+        public void Start()
+        {
+            lock (_syncLock)
+            {
+                if (IsRunning)
+                {
+                    return;
+                }
+
+                FleckLog.LogAction = (level, message, ex) =>
+                {
+                    // Filter or redirect internal Fleck logs if needed
+                };
+
+                _server = new WebSocketServer($"ws://0.0.0.0:{Port}")
+                {
+                    RestartAfterListenError = true
+                };
+
+                _server.Start(socket =>
+                {
+                    socket.OnOpen = () => HandleSocketOpen(socket);
+                    socket.OnClose = () => HandleSocketClose(socket);
+                    socket.OnMessage = message => HandleSocketMessage(socket, message);
+                    socket.OnError = ex => HandleSocketError(socket, ex);
+                });
+
+                IsRunning = true;
+                _heartbeatWatchdogTimer?.Dispose();
+                _heartbeatWatchdogTimer = new Timer(CheckHeartbeats, null, 1000, 1000);
+                Log($"WebSocket Server listening on {ServerUri}");
+            }
+        }
+
+        public void Stop()
+        {
+            lock (_syncLock)
+            {
+                if (!IsRunning)
+                {
+                    return;
+                }
+
+                _heartbeatWatchdogTimer?.Dispose();
+                _heartbeatWatchdogTimer = null;
+
+                foreach (var client in _clients.Keys.ToList())
+                {
+                    try
+                    {
+                        client.Close();
+                    }
+                    catch
+                    {
+                        // Ignore close error
+                    }
+                }
+
+                _clients.Clear();
+                _server?.Dispose();
+                _server = null;
+
+                IsRunning = false;
+                UpdateAllLaneRefereeStatuses();
+                UpdateClientMetrics();
+                Log("WebSocket Server stopped.");
+            }
+        }
+
+        private void CheckHeartbeats(object? state)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var pair in _clients.ToList())
+            {
+                var socket = pair.Key;
+                var client = pair.Value;
+
+                // If no message or ping received within 3 seconds, mark as timed out
+                if ((now - client.LastSeenUtc).TotalSeconds > 3)
+                {
+                    Log($"Device connection timed out: {client.IpAddress} ({client.Role}, Lane {client.AssignedLane})");
+                    try
+                    {
+                        socket.Close();
+                    }
+                    catch
+                    {
+                        // Ignore socket close failure
+                    }
+
+                    // Directly remove and clean up disconnected client
+                    HandleSocketClose(socket);
+                }
+            }
+        }
+
+        private void HandleSocketOpen(IWebSocketConnection socket)
+        {
+            var client = new ConnectedClient(socket);
+            _clients.TryAdd(socket, client);
+
+            UpdateClientMetrics();
+            Log($"Device connected: {client.IpAddress} (ID: {client.ClientId})");
+
+            // Send current state synchronization immediately upon connecting
+            SendToSocket(socket, CreateStateSyncEvent());
+        }
+
+        private void HandleSocketClose(IWebSocketConnection socket)
+        {
+            if (_clients.TryRemove(socket, out var client))
+            {
+                Log($"Device disconnected: {client.IpAddress} (Role: {client.Role}, Lane: {client.AssignedLane})");
+
+                // Immediately sync referee status on all lanes so indicators turn off
+                UpdateAllLaneRefereeStatuses();
+
+                if (client.Role == ClientRole.Chief)
+                {
+                    Log($"Chief disconnected: {client.IpAddress}");
+                }
+
+                UpdateClientMetrics();
+            }
+        }
+
+        private void HandleSocketError(IWebSocketConnection socket, Exception ex)
+        {
+            Log($"Socket error on {socket.ConnectionInfo?.ClientIpAddress}: {ex.Message}");
+            // Clean up client immediately on socket error so indicators do not get stuck
+            HandleSocketClose(socket);
+        }
+
+        private void HandleSocketMessage(IWebSocketConnection socket, string rawMessage)
+        {
+            if (!_clients.TryGetValue(socket, out var client))
+            {
+                return;
+            }
+
+            client.UpdateActivity();
+
+            try
+            {
+                var command = JsonSerializer.Deserialize<ClientCommand>(rawMessage, JsonOptions);
+                if (command == null || string.IsNullOrWhiteSpace(command.Action))
+                {
+                    return;
+                }
+
+                string actionUpper = command.Action.Trim().ToUpperInvariant();
+
+                // Gate operational actions: require valid authentication with 4-digit Access Code
+                if (actionUpper != "PING" && actionUpper != "REGISTER" && actionUpper != "SYNC_REQUEST")
+                {
+                    if (!client.IsAuthenticated)
+                    {
+                        Log($"[AUTH REQUIRED] Rejected '{actionUpper}' from unauthenticated client {client.IpAddress}");
+                        SendToSocket(socket, new ServerEvent
+                        {
+                            Event = "AUTH_REQUIRED",
+                            Message = "Perangkat belum terotentikasi. Silakan hubungkan dengan 4 digit access code yang valid."
+                        });
+                        return;
+                    }
+                }
+
+                switch (actionUpper)
+                {
+                    case "PING":
+                        if (command.EstimatedLatencyMs.HasValue)
+                        {
+                            client.RecordLatencyMeasurement(command.EstimatedLatencyMs.Value);
+                        }
+
+                        if (client.Role == ClientRole.Referee && client.AssignedLane.HasValue)
+                        {
+                            var activeLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == client.AssignedLane.Value);
+                            if (activeLane != null)
+                            {
+                                activeLane.RefereeLatencyMs = client.OneWayLatencyMs;
+                            }
+                        }
+
+                        SendToSocket(socket, new ServerEvent
+                        {
+                            Event = "PONG",
+                            ClientTimestamp = command.ClientTimestamp,
+                            ServerTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        });
+                        break;
+
+                    case "REGISTER":
+                        Log($"Command '{actionUpper}' from {client.IpAddress} ({command.Role ?? "Unknown"})");
+                        HandleRegisterCommand(client, command);
+                        break;
+
+                    case "START_RACE":
+                        Log($"Command 'START_RACE' from {client.IpAddress} ({client.Role})");
+                        _engine.StartRace();
+                        break;
+
+                    case "STOP_LANE":
+                        int laneToStop = command.LaneNumber ?? client.AssignedLane ?? -1;
+                        if (laneToStop >= 0)
+                        {
+                            double latencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
+                            TimeSpan? compensatedTime = null;
+
+                            if (latencyMs > 0)
+                            {
+                                TimeSpan arrival = _engine.Elapsed;
+                                compensatedTime = arrival - TimeSpan.FromMilliseconds(latencyMs);
+                                Log($"Command 'STOP_LANE' Lane {laneToStop} from {client.Role} ({client.IpAddress}) (Compensated: -{latencyMs:F1}ms)");
+                            }
+                            else
+                            {
+                                Log($"Command 'STOP_LANE' for Lane {laneToStop} from {client.Role} ({client.IpAddress})");
+                            }
+
+                            bool stopped = _engine.StopLane(laneToStop, compensatedTime);
+                            if (stopped && client.Role == ClientRole.Chief)
+                            {
+                                Log($"[CHIEF BACKUP] Lane {laneToStop} stopped");
+                            }
+
+                            var targetLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == laneToStop);
+                            if (targetLane != null && latencyMs > 0)
+                            {
+                                targetLane.RefereeLatencyMs = latencyMs;
+                            }
+                        }
+                        break;
+
+                    case "STOP_ACTIVE_LANES":
+                    case "STOP_ALL_ACTIVE":
+                        double activeLatencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
+                        TimeSpan? compActiveTime = null;
+                        if (activeLatencyMs > 0)
+                        {
+                            TimeSpan arrival = _engine.Elapsed;
+                            compActiveTime = arrival - TimeSpan.FromMilliseconds(activeLatencyMs);
+                        }
+
+                        int stoppedLanes = _engine.StopActiveLanes(compActiveTime);
+                        Log($"Command '{actionUpper}' from {client.Role} ({client.IpAddress}) - stopped {stoppedLanes} active lane(s)");
+                        break;
+
+                    case "RECORD_SPLIT":
+                        int laneForSplit = command.LaneNumber ?? client.AssignedLane ?? -1;
+                        if (laneForSplit >= 0)
+                        {
+                            double latencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
+                            TimeSpan? compensatedTime = null;
+
+                            if (latencyMs > 0)
+                            {
+                                TimeSpan arrival = _engine.Elapsed;
+                                compensatedTime = arrival - TimeSpan.FromMilliseconds(latencyMs);
+                                Log($"Command 'RECORD_SPLIT' Lane {laneForSplit} from {client.IpAddress} (Compensated: -{latencyMs:F1}ms)");
+                            }
+                            else
+                            {
+                                Log($"Command 'RECORD_SPLIT' for Lane {laneForSplit} from {client.IpAddress}");
+                            }
+
+                            _engine.RecordLaneSplit(laneForSplit, compensatedTime);
+                        }
+                        break;
+
+                    case "RESET_RACE":
+                        Log($"Command 'RESET_RACE' from {client.IpAddress} ({client.Role})");
+                        _engine.ResetRace();
+                        break;
+
+                    case "SYNC_REQUEST":
+                        SendToSocket(socket, CreateStateSyncEvent());
+                        break;
+
+                    case "DISCONNECT":
+                    case "UNREGISTER":
+                    case "LOGOUT":
+                        Log($"Command '{actionUpper}' from {client.IpAddress} ({client.Role}, Lane {client.AssignedLane})");
+                        client.Role = ClientRole.Unknown;
+                        client.AssignedLane = null;
+                        client.IsAuthenticated = false;
+                        UpdateAllLaneRefereeStatuses();
+                        UpdateClientMetrics();
+                        try
+                        {
+                            socket.Close();
+                        }
+                        catch { }
+                        HandleSocketClose(socket);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Failed to process message: {ex.Message}");
+            }
+        }
+
+        private void HandleRegisterCommand(ConnectedClient client, ClientCommand command)
+        {
+            ClientRole parsedRole = ClientRole.Unknown;
+            if (!string.IsNullOrWhiteSpace(command.Role))
+            {
+                if (Enum.TryParse<ClientRole>(command.Role, ignoreCase: true, out var role))
+                {
+                    parsedRole = role;
+                }
+            }
+
+            // Authentication verification using 4-digit server access code
+            bool requiresAuth = parsedRole != ClientRole.Spectator;
+            if (requiresAuth)
+            {
+                bool isCodeValid = !string.IsNullOrWhiteSpace(command.AccessCode) &&
+                                   string.Equals(command.AccessCode.Trim(), AccessCode, StringComparison.Ordinal);
+
+                if (!isCodeValid)
+                {
+                    client.IsAuthenticated = false;
+                    Log($"[AUTH REJECTED] {client.IpAddress} ({command.DeviceName ?? "Device"}) sent invalid code '{command.AccessCode}' for role {parsedRole} (Expected: {AccessCode})");
+                    SendToSocket(client.Socket, new ServerEvent
+                    {
+                        Event = "AUTH_FAILED",
+                        Message = "Access Code salah! Masukkan 4 digit access code yang tertera pada server timing."
+                    });
+                    return;
+                }
+            }
+
+            client.Role = parsedRole;
+            client.IsAuthenticated = true;
+            Log($"[AUTH SUCCESS] {client.IpAddress} ({command.DeviceName ?? "Device"}) authenticated with code {AccessCode} as {client.Role}");
+
+            if (command.LaneNumber.HasValue)
+            {
+                int laneVal = command.LaneNumber.Value;
+                if (laneVal == 10) laneVal = 0; // Normalize Lane 10 -> 0
+                client.AssignedLane = laneVal;
+            }
+
+            if (!string.IsNullOrWhiteSpace(command.DeviceName))
+            {
+                client.DeviceName = command.DeviceName;
+            }
+
+            UpdateAllLaneRefereeStatuses();
+
+            if (client.Role == ClientRole.Chief)
+            {
+                Log($"Chief registered from {client.IpAddress} ({client.DeviceName})");
+            }
+
+            UpdateClientMetrics();
+
+            // Send registration confirmation and synced state
+            SendToSocket(client.Socket, new ServerEvent
+            {
+                Event = "REGISTERED",
+                AccessCode = AccessCode,
+                Message = $"Registered successfully as {client.Role}" +
+                          (client.AssignedLane.HasValue ? $" for Lane {client.AssignedLane.Value}" : "")
+            });
+            SendToSocket(client.Socket, CreateStateSyncEvent());
+        }
+
+        public void UpdateAllLaneRefereeStatuses()
+        {
+            var refereeClients = _clients.Values
+                .Where(c => c.Role == ClientRole.Referee && c.AssignedLane.HasValue)
+                .ToList();
+
+            void Apply()
+            {
+                foreach (var lane in _engine.Lanes)
+                {
+                    var refereeClient = refereeClients.FirstOrDefault(c => c.AssignedLane == lane.LaneNumber);
+                    lane.IsRefereeConnected = refereeClient != null;
+                    lane.RefereeLatencyMs = refereeClient?.OneWayLatencyMs ?? 0;
+                }
+            }
+
+            if (System.Windows.Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke((Action)Apply);
+            }
+            else
+            {
+                Apply();
+            }
+        }
+
+        private void UpdateLaneRefereeStatus(int laneNumber)
+        {
+            UpdateAllLaneRefereeStatuses();
+        }
+
+        private void UpdateClientMetrics()
+        {
+            var clientList = _clients.Values.ToList();
+            TotalClients = clientList.Count;
+            StartersCount = clientList.Count(c => c.Role == ClientRole.Starter);
+            RefereesCount = clientList.Count(c => c.Role == ClientRole.Referee);
+            ChiefsCount = clientList.Count(c => c.Role == ClientRole.Chief);
+            SpectatorsCount = clientList.Count(c => c.Role == ClientRole.Spectator);
+        }
+
+        private void HandleEngineRaceStarted()
+        {
+            Broadcast(new ServerEvent
+            {
+                Event = "RACE_STARTED",
+                Status = _engine.Status.ToString(),
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            });
+        }
+
+        private void HandleEngineRaceStopped()
+        {
+            Broadcast(CreateStateSyncEvent());
+        }
+
+        private void HandleEngineRaceReset()
+        {
+            Broadcast(new ServerEvent
+            {
+                Event = "RACE_RESET",
+                Status = _engine.Status.ToString(),
+                ElapsedTime = "00:00.00"
+            });
+        }
+
+        private void HandleEngineLaneFinished(LaneModel lane, TimeSpan finishTime)
+        {
+            Broadcast(new ServerEvent
+            {
+                Event = "LANE_STOPPED",
+                LaneNumber = lane.LaneNumber,
+                FinishTime = lane.FormattedTime,
+                Status = lane.Status.ToString(),
+                CompensatedLatencyMs = lane.RefereeLatencyMs
+            });
+        }
+
+        private void HandleEngineLaneStatusChanged(LaneModel lane, LaneStatus status)
+        {
+            Broadcast(new ServerEvent
+            {
+                Event = "LANE_STATUS_UPDATED",
+                LaneNumber = lane.LaneNumber,
+                Status = status.ToString(),
+                FinishTime = lane.FormattedTime,
+                Message = $"Lane {lane.LaneNumber} status updated to {status}"
+            });
+
+            Log($"Lane {lane.LaneNumber} status changed to {status}");
+
+            if (_engine.Status == RaceStatus.Finished)
+            {
+                Broadcast(CreateStateSyncEvent());
+            }
+        }
+
+        private void HandleEngineLaneSplitRecorded(LaneModel lane, TimeSpan splitTime)
+        {
+            Broadcast(new ServerEvent
+            {
+                Event = "LANE_SPLIT",
+                LaneNumber = lane.LaneNumber,
+                SplitTime = LaneModel.FormatTime(splitTime),
+                CompensatedLatencyMs = lane.RefereeLatencyMs
+            });
+        }
+
+        private void HandleEngineTick(TimeSpan elapsed)
+        {
+            // Throttle clock tick broadcast to every 80-100ms to preserve Wi-Fi bandwidth
+            long nowMs = Stopwatch.GetTimestamp();
+            if (Stopwatch.GetElapsedTime(_lastTickTimestamp).TotalMilliseconds < 80)
+            {
+                return;
+            }
+
+            _lastTickTimestamp = nowMs;
+
+            Broadcast(new ServerEvent
+            {
+                Event = "CLOCK_TICK",
+                ElapsedTime = _engine.FormattedElapsedTime
+            });
+        }
+
+        public ServerEvent CreateStateSyncEvent()
+        {
+            var laneDtos = _engine.Lanes.Select(l => new LaneStateDto
+            {
+                LaneNumber = l.LaneNumber,
+                SwimmerName = l.SwimmerName,
+                Club = l.Club,
+                SeedTime = l.SeedTime,
+                Rank = l.Rank,
+                Status = l.Status.ToString(),
+                FormattedTime = l.FormattedTime,
+                IsRefereeConnected = l.IsRefereeConnected,
+                IsChiefConnected = ChiefsCount > 0,
+                LatencyMs = l.RefereeLatencyMs
+            }).ToList();
+
+            double avgLatency = _clients.Values.Count > 0 ? _clients.Values.Average(c => c.OneWayLatencyMs) : 0.0;
+
+            return new ServerEvent
+            {
+                Event = "STATE_SYNC",
+                Status = _engine.Status.ToString(),
+                ElapsedTime = _engine.FormattedElapsedTime,
+                MeetName = CurrentMeetName,
+                EventNumber = CurrentEventNumber,
+                EventName = CurrentEventName,
+                HeatNumber = CurrentHeatNumber,
+                AccessCode = AccessCode,
+                Lanes = laneDtos,
+                ConnectedClients = new ClientSummaryDto
+                {
+                    TotalCount = TotalClients,
+                    StartersCount = StartersCount,
+                    RefereesCount = RefereesCount,
+                    ChiefsCount = ChiefsCount,
+                    SpectatorsCount = SpectatorsCount,
+                    AverageLatencyMs = Math.Round(avgLatency, 1)
+                }
+            };
+        }
+
+        public void UpdateCurrentMeetContext(string meetName, int eventNumber, string eventName, int heatNumber)
+        {
+            CurrentMeetName = meetName;
+            CurrentEventNumber = eventNumber;
+            CurrentEventName = eventName;
+            CurrentHeatNumber = heatNumber;
+            Broadcast(CreateStateSyncEvent());
+        }
+
+        public void Broadcast(ServerEvent serverEvent)
+        {
+            string json = JsonSerializer.Serialize(serverEvent, JsonOptions);
+            foreach (var client in _clients.Keys)
+            {
+                try
+                {
+                    if (client.IsAvailable)
+                    {
+                        client.Send(json);
+                    }
+                }
+                catch
+                {
+                    // Ignore transient send failure
+                }
+            }
+        }
+
+        private static void SendToSocket(IWebSocketConnection socket, ServerEvent serverEvent)
+        {
+            try
+            {
+                if (socket.IsAvailable)
+                {
+                    string json = JsonSerializer.Serialize(serverEvent, JsonOptions);
+                    socket.Send(json);
+                }
+            }
+            catch
+            {
+                // Ignore transient send failure
+            }
+        }
+
+        private void Log(string message)
+        {
+            LogReceived?.Invoke($"[{DateTime.Now:HH:mm:ss}] {message}");
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            _engine.RaceStarted -= HandleEngineRaceStarted;
+            _engine.RaceStopped -= HandleEngineRaceStopped;
+            _engine.RaceReset -= HandleEngineRaceReset;
+            _engine.LaneFinished -= HandleEngineLaneFinished;
+            _engine.LaneStatusChanged -= HandleEngineLaneStatusChanged;
+            _engine.LaneSplitRecorded -= HandleEngineLaneSplitRecorded;
+            _engine.Tick -= HandleEngineTick;
+        }
+    }
+}

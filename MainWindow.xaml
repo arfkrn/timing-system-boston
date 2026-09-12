@@ -1,0 +1,960 @@
+<Window x:Class="boston_timing_system.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:helpers="clr-namespace:boston_timing_system.Helpers"
+        xmlns:models="clr-namespace:boston_timing_system.Models"
+        mc:Ignorable="d"
+        Title="Swimming Competition Timing System - Master Console" 
+        Height="840" Width="1260"
+        MinHeight="700" MinWidth="1020"
+        Background="#FFFFFF"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <helpers:StatusToBrushConverter x:Key="StatusToBrushConverter" />
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+        <!-- Button Styles -->
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" 
+                                CornerRadius="8" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.88" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.35" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LaneTouchButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="#EF4444" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" 
+                                CornerRadius="6" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#374151" />
+                                <Setter TargetName="border" Property="Opacity" Value="0.5" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="HeaderOutlinedButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#0F172A" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="12,3" />
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#94A3B8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}" 
+                                CornerRadius="4" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#F8FAFC" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="#0F172A" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#E2E8F0" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.4" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16,12,16,12">
+        <Grid.RowDefinitions>
+            <!-- 0. Top Branding & Header Bar (Reference Style) -->
+            <RowDefinition Height="Auto" />
+            <!-- 1. Master Event, Heat, Meet, Date, Timer & Controls Bar -->
+            <RowDefinition Height="Auto" />
+            <!-- 2. 10 Lanes Scoreboard Table Grid -->
+            <RowDefinition Height="*" />
+            <!-- 3. Footer & Live Server Activity Log -->
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 0. TOP BRANDING & HEADER BAR (Matches Reference Image) -->
+        <Border Grid.Row="0" Background="#FFFFFF" CornerRadius="6" Padding="14,6" Margin="0,0,0,10" 
+                BorderBrush="#CBD5E1" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- Left: Logo & BOSTON TIMING -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Center: Flexible Space -->
+                    <ColumnDefinition Width="*" />
+                    <!-- Right: Live Clock Pill & Meet Manager Button -->
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Logo + BOSTON TIMING -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Source="/Assets/logo-boston-cut-new.png" Height="40" Width="40" 
+                           RenderOptions.BitmapScalingMode="HighQuality" Margin="0,0,10,0" VerticalAlignment="Center" />
+                    <TextBlock Text="BOSTON TIMING SYSTEM" 
+                               FontWeight="Bold" 
+                               FontSize="16" 
+                               Foreground="#0F172A" 
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Right: Digital Clock & Meet Manager Button (Replaces Reference Settings Button) -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Digital Clock Badge (Matches Reference: 09:10:59) -->
+                    <Border Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" 
+                            CornerRadius="4" Padding="10,3" Margin="0,0,8,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="txtHeaderClock" Text="00:00:00" 
+                                   FontFamily="Segoe UI, Consolas" FontSize="13" FontWeight="Bold" 
+                                   Foreground="#0F172A" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Meet Manager Button (Replaces Reference Settings Button) -->
+                    <Button x:Name="btnOpenMeetManager" 
+                            Content="Meet Manager" 
+                            Style="{StaticResource HeaderOutlinedButtonStyle}"
+                            Click="BtnOpenMeetManager_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 1. MASTER EVENT, HEAT, MEET, DATE, TIMER & CONTROLS BAR (Single unified row with vertical dividers) -->
+        <Border Grid.Row="1" Background="#FFFFFF" CornerRadius="6" Padding="16,10" Margin="0,0,0,10" 
+                BorderBrush="#CBD5E1" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- Column 0: Event No & Name (Equal Share) -->
+                    <ColumnDefinition Width="1*" />
+                    <!-- Column 1: Divider -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Column 2: Heat Info & Stepper (Equal Share) -->
+                    <ColumnDefinition Width="1*" />
+                    <!-- Column 3: Divider -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Column 4: Competition Meet Name (Equal Share) -->
+                    <ColumnDefinition Width="1*" />
+                    <!-- Column 5: Divider -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Column 6: Current Date (Equal Share) -->
+                    <ColumnDefinition Width="1*" />
+                    <!-- Column 7: Divider -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Column 8: Race Status, Master Timer, Controls (Slightly Wider) -->
+                    <ColumnDefinition Width="1.35*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 1. EVENT INFO & STEPPER (Prev & Next Buttons Only, No Dropdown) -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="4,0">
+                    <TextBlock Text="EVENT" FontSize="10.5" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <Button x:Name="btnPrevEvent" Content="◀" 
+                                Style="{StaticResource HeaderOutlinedButtonStyle}"
+                                Padding="12,5" Margin="0,0,6,0" FontSize="12" FontWeight="Bold"
+                                Click="BtnPrevEvent_Click"
+                                ToolTip="Previous Event"/>
+                        <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" 
+                                CornerRadius="4" Padding="14,5" MinWidth="100">
+                            <TextBlock x:Name="txtCurrentEventDisplay" Text="Event #01" 
+                                       FontSize="13" FontWeight="Bold" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <Button x:Name="btnNextEvent" Content="▶" 
+                                Style="{StaticResource HeaderOutlinedButtonStyle}"
+                                Padding="12,5" Margin="6,0,0,0" FontSize="12" FontWeight="Bold"
+                                Click="BtnNextEvent_Click"
+                                ToolTip="Next Event"/>
+                    </StackPanel>
+                    <TextBlock x:Name="txtCurrentEventName" Text="50m Freestyle Men" 
+                               FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B" Margin="0,4,0,0"
+                               HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="190"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                </StackPanel>
+
+                <!-- DIVIDER 1 -->
+                <Rectangle Grid.Column="1" Width="1" Fill="#E2E8F0" Margin="10,4" VerticalAlignment="Stretch" />
+
+                <!-- 2. HEAT INFO & STEPPER (Prev & Next Buttons Only, No Dropdown) -->
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="4,0">
+                    <TextBlock Text="HEAT" FontSize="10.5" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <Button x:Name="btnPrevHeat" Content="◀" 
+                                Style="{StaticResource HeaderOutlinedButtonStyle}"
+                                Padding="12,5" Margin="0,0,6,0" FontSize="12" FontWeight="Bold"
+                                Click="BtnPrevHeat_Click"
+                                ToolTip="Previous Heat"/>
+                        <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" 
+                                CornerRadius="4" Padding="14,5" MinWidth="90">
+                            <TextBlock x:Name="txtCurrentHeatDisplay" Text="Heat 1 / 2" 
+                                       FontSize="13" FontWeight="Bold" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <Button x:Name="btnNextHeat" Content="▶" 
+                                Style="{StaticResource HeaderOutlinedButtonStyle}"
+                                Padding="12,5" Margin="6,0,0,0" FontSize="12" FontWeight="Bold"
+                                Click="BtnNextHeat_Click"
+                                ToolTip="Next Heat"/>
+                    </StackPanel>
+                    <TextBlock x:Name="txtHeatSwimmerCount" Text="8 Swimmers on Board" 
+                               FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B" Margin="0,4,0,0"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- DIVIDER 2 -->
+                <Rectangle Grid.Column="3" Width="1" Fill="#E2E8F0" Margin="10,4" VerticalAlignment="Stretch" />
+
+                <!-- 3. COMPETITION NAME (Equal Share) -->
+                <StackPanel Grid.Column="4" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
+                    <TextBlock Text="COMPETITION" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="txtMeetTitle" Text="Jakarta Open Aquatic Championship 2026" 
+                               FontSize="14" FontWeight="Bold" Foreground="#0F172A" 
+                               TextWrapping="Wrap" LineHeight="17" TextAlignment="Center"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                </StackPanel>
+
+                <!-- DIVIDER 3 -->
+                <Rectangle Grid.Column="5" Width="1" Fill="#E2E8F0" Margin="10,4" VerticalAlignment="Stretch" />
+
+                <!-- 4. CURRENT DATE (Equal Share) -->
+                <StackPanel Grid.Column="6" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
+                    <TextBlock Text="DATE" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" 
+                            CornerRadius="5" Padding="16,5" MinWidth="130" HorizontalAlignment="Center">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock x:Name="txtCurrentDate" Text="11 Sep 2026" 
+                                       FontSize="13.5" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="txtCurrentDayOfWeek" Text="Friday" 
+                                       FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- DIVIDER 4 -->
+                <Rectangle Grid.Column="7" Width="1" Fill="#E2E8F0" Margin="10,4" VerticalAlignment="Stretch" />
+
+                <!-- 5. RACE STATUS, MASTER TIMER, & ACTION BUTTONS (Slightly Wider) -->
+                <StackPanel Grid.Column="8" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
+                    <!-- Race Status Badge (Large font size) -->
+                    <Border x:Name="bdRaceStatus" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1.5" 
+                            CornerRadius="5" Padding="16,3" HorizontalAlignment="Center" Margin="0,0,0,5">
+                        <TextBlock x:Name="txtRaceStatus" Text="STATUS: READY" 
+                                   FontSize="15" FontWeight="Black" Foreground="#166534" HorizontalAlignment="Center" />
+                    </Border>
+
+                    <!-- Master Timer Display -->
+                    <Border Background="#F8FAFC" CornerRadius="6" 
+                            Padding="28,3" BorderBrush="#94A3B8" BorderThickness="1.5"
+                            HorizontalAlignment="Center" Margin="0,0,0,6">
+                        <TextBlock x:Name="txtMasterTimer" 
+                                   Text="00.00.00" 
+                                   FontFamily="Consolas" 
+                                   FontSize="44" 
+                                   FontWeight="Bold" 
+                                   Foreground="#000000" 
+                                   HorizontalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Control Action Buttons (Directly below timer) -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button x:Name="btnStartRace" 
+                                Content="START" 
+                                Style="{StaticResource ActionButtonStyle}" 
+                                Background="#16A34A" 
+                                FontSize="12"
+                                Padding="14,6"
+                                Margin="0,0,6,0" 
+                                Click="BtnStartRace_Click" />
+                        <Button x:Name="btnStopRace" 
+                                Content="STOP ALL" 
+                                Style="{StaticResource ActionButtonStyle}" 
+                                Background="#DC2626" 
+                                FontSize="12"
+                                Padding="14,6" 
+                                Margin="0,0,6,0" 
+                                Click="BtnStopRace_Click" />
+                        <Button x:Name="btnResetRace" 
+                                Content="RESET" 
+                                Style="{StaticResource ActionButtonStyle}" 
+                                Background="#475569" 
+                                FontSize="12"
+                                Padding="14,6" 
+                                Click="BtnResetRace_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 2. 10 LANES SCOREBOARD TABLE (FINA / CTS STYLE) -->
+        <Border Grid.Row="2" Background="#FFFFFF" CornerRadius="8" 
+                BorderBrush="#CBD5E1" BorderThickness="1" ClipToBounds="True">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <!-- Table Header -->
+                    <RowDefinition Height="40" />
+                    <!-- Table Rows (Lanes 1 to 10) -->
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- TABLE HEADER -->
+                <Border Grid.Row="0" Background="#EDF2F7" BorderBrush="#CBD5E1" BorderThickness="0,0,0,1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="45" />   <!-- LANE -->
+                            <ColumnDefinition Width="135" />  <!-- TEAM -->
+                            <ColumnDefinition Width="*" />    <!-- ATHLETE -->
+                            <ColumnDefinition Width="80" />   <!-- SEED TIME -->
+                            <ColumnDefinition Width="80" />   <!-- TIMER 1 -->
+                            <ColumnDefinition Width="80" />   <!-- TIMER 2 -->
+                            <ColumnDefinition Width="80" />   <!-- TIMER 3 -->
+                            <ColumnDefinition Width="95" />   <!-- RESULT TIME -->
+                            <ColumnDefinition Width="60" />   <!-- SIGNAL -->
+                            <ColumnDefinition Width="95" />   <!-- STATUS -->
+                            <ColumnDefinition Width="105" />  <!-- OFFICIAL TIME -->
+                            <ColumnDefinition Width="50" />   <!-- RANK -->
+                            <ColumnDefinition Width="85" />   <!-- STOP -->
+                        </Grid.ColumnDefinitions>
+
+                        <!-- LANE -->
+                        <Border Grid.Column="0" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="LANE" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- TEAM -->
+                        <Border Grid.Column="1" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="TEAM" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        </Border>
+
+                        <!-- ATHLETE -->
+                        <Border Grid.Column="2" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="ATHLETE" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        </Border>
+
+                        <!-- SEED TIME -->
+                        <Border Grid.Column="3" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="SEED TIME" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- TIMER 1 -->
+                        <Border Grid.Column="4" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="TIMER 1" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- TIMER 2 -->
+                        <Border Grid.Column="5" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="TIMER 2" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- TIMER 3 -->
+                        <Border Grid.Column="6" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="TIMER 3" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- RESULT TIME -->
+                        <Border Grid.Column="7" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="RESULT TIME" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- SIGNAL -->
+                        <Border Grid.Column="8" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="SIGNAL" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- STATUS (DQ, DNS, DNF, OFF) -->
+                        <Border Grid.Column="9" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="STATUS" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- OFFICIAL TIME -->
+                        <Border Grid.Column="10" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="OFFICIAL TIME" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- RANK -->
+                        <Border Grid.Column="11" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
+                            <TextBlock Text="RANK" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- STOP -->
+                        <Border Grid.Column="12">
+                            <TextBlock Text="STOP" FontWeight="Bold" FontSize="11.5" Foreground="#0F172A"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- TABLE ROWS (10 LANES) -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="icLanes">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type models:LaneModel}">
+                                <Border BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" MinHeight="44">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#FFFFFF" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#F8FAFC" />
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsFinished}" Value="True">
+                                                    <Setter Property="Background" Value="#F0FDF4" />
+                                                </DataTrigger>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsFinished}" Value="True" />
+                                                        <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsMouseOver}" Value="True" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Background" Value="#DCFCE7" />
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="45" />   <!-- LANE -->
+                                            <ColumnDefinition Width="135" />  <!-- TEAM -->
+                                            <ColumnDefinition Width="*" />    <!-- ATHLETE -->
+                                            <ColumnDefinition Width="80" />   <!-- SEED TIME -->
+                                            <ColumnDefinition Width="80" />   <!-- TIMER 1 -->
+                                            <ColumnDefinition Width="80" />   <!-- TIMER 2 -->
+                                            <ColumnDefinition Width="80" />   <!-- TIMER 3 -->
+                                            <ColumnDefinition Width="95" />   <!-- RESULT TIME -->
+                                            <ColumnDefinition Width="60" />   <!-- SIGNAL -->
+                                            <ColumnDefinition Width="95" />   <!-- STATUS -->
+                                            <ColumnDefinition Width="105" />  <!-- OFFICIAL TIME -->
+                                            <ColumnDefinition Width="50" />   <!-- RANK -->
+                                            <ColumnDefinition Width="85" />   <!-- STOP -->
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- 0: LANE NUMBER -->
+                                        <Border Grid.Column="0" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <Grid>
+                                                <!-- Left accent indicator strip -->
+                                                <Rectangle HorizontalAlignment="Left" Width="4" VerticalAlignment="Stretch">
+                                                    <Rectangle.Style>
+                                                        <Style TargetType="Rectangle">
+                                                            <Setter Property="Fill" Value="Transparent" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsFinished}" Value="True">
+                                                                    <Setter Property="Fill" Value="#16A34A" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding CanStop}" Value="True">
+                                                                    <Setter Property="Fill" Value="#0284C7" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Rectangle.Style>
+                                                </Rectangle>
+
+                                                <TextBlock Text="{Binding LaneNumber}" 
+                                                           FontSize="15" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="#0F172A" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsFinished}" Value="True">
+                                                                    <Setter Property="Foreground" Value="#15803D" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- 1: TEAM -->
+                                        <Border Grid.Column="1" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <TextBox Text="{Binding Club, UpdateSourceTrigger=PropertyChanged}" 
+                                                     FontSize="12.5" FontWeight="SemiBold" Foreground="#334155"
+                                                     Background="Transparent" BorderThickness="0"
+                                                     VerticalAlignment="Center" Margin="8,0,4,0" />
+                                        </Border>
+
+                                        <!-- 2: ATHLETE -->
+                                        <Border Grid.Column="2" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <TextBox Text="{Binding SwimmerName, UpdateSourceTrigger=PropertyChanged}" 
+                                                     FontSize="13" FontWeight="Bold" Foreground="#0F172A"
+                                                     Background="Transparent" BorderThickness="0"
+                                                     VerticalAlignment="Center" Margin="8,0,4,0" />
+                                        </Border>
+
+                                        <!-- 3: SEED TIME (Blank by default) -->
+                                        <Border Grid.Column="3" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <TextBox Text="{Binding SeedTime, UpdateSourceTrigger=PropertyChanged}" 
+                                                     FontSize="12.5" Foreground="#64748B"
+                                                     Background="Transparent" BorderThickness="0"
+                                                     TextAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+
+                                        <!-- 4: TIMER 1 -->
+                                        <Border Grid.Column="4" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <TextBlock Text="{Binding Timer1}" 
+                                                       FontFamily="Consolas" FontSize="12.5" Foreground="#94A3B8"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- 5: TIMER 2 -->
+                                        <Border Grid.Column="5" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <TextBlock Text="{Binding Timer2}" 
+                                                       FontFamily="Consolas" FontSize="12.5" Foreground="#94A3B8"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- 6: TIMER 3 (mirrors Result Time) -->
+                                        <Border Grid.Column="6" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <TextBlock Text="{Binding Timer3}" 
+                                                       FontFamily="Consolas" FontSize="13" FontWeight="Bold" Foreground="#0F172A"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- 7: RESULT TIME -->
+                                        <Border Grid.Column="7" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0"
+                                                MouseLeftButtonDown="BorderResultTime_MouseLeftButtonDown">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Cursor" Value="Arrow" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CanStop}" Value="True">
+                                                            <Setter Property="Cursor" Value="Hand" />
+                                                            <Setter Property="ToolTip" Value="Race Running: Click to TOUCH / STOP lane" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding ResultTime}" 
+                                                       FontFamily="Consolas" FontSize="13.5" FontWeight="Bold" Foreground="#0F172A"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- 8: SIGNAL (4-bar cellular icon) -->
+                                        <Border Grid.Column="8" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                        ToolTip="{Binding RefereeConnectionTooltip}">
+                                                <!-- Bar 1 -->
+                                                <Rectangle Width="3" Height="4" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
+                                                    <Rectangle.Style>
+                                                        <Style TargetType="Rectangle">
+                                                            <Setter Property="Fill" Value="#CBD5E1" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                    <Setter Property="Fill" Value="#0284C7" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Rectangle.Style>
+                                                </Rectangle>
+                                                <!-- Bar 2 -->
+                                                <Rectangle Width="3" Height="7" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
+                                                    <Rectangle.Style>
+                                                        <Style TargetType="Rectangle">
+                                                            <Setter Property="Fill" Value="#CBD5E1" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                    <Setter Property="Fill" Value="#0284C7" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Rectangle.Style>
+                                                </Rectangle>
+                                                <!-- Bar 3 -->
+                                                <Rectangle Width="3" Height="10" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
+                                                    <Rectangle.Style>
+                                                        <Style TargetType="Rectangle">
+                                                            <Setter Property="Fill" Value="#CBD5E1" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                    <Setter Property="Fill" Value="#0284C7" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Rectangle.Style>
+                                                </Rectangle>
+                                                <!-- Bar 4 -->
+                                                <Rectangle Width="3" Height="13" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
+                                                    <Rectangle.Style>
+                                                        <Style TargetType="Rectangle">
+                                                            <Setter Property="Fill" Value="#CBD5E1" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                    <Setter Property="Fill" Value="#0284C7" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Rectangle.Style>
+                                                </Rectangle>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 9: STATUS SELECTOR (DQ, DNS, DNF, OFF) -->
+                                        <Border Grid.Column="9" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0" Padding="4,0">
+                                            <ComboBox SelectedItem="{Binding StatusOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      ItemsSource="{Binding Source={x:Static models:LaneModel.StatusOptions}}"
+                                                      Height="26"
+                                                      FontSize="11"
+                                                      FontWeight="Bold"
+                                                      Cursor="Hand"
+                                                      VerticalContentAlignment="Center"
+                                                      HorizontalContentAlignment="Left"
+                                                      Background="#F8FAFC"
+                                                      BorderBrush="#CBD5E1">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Ellipse Width="6" Height="6" Margin="2,0,6,0" VerticalAlignment="Center"
+                                                                     Fill="{Binding Converter={StaticResource StatusToBrushConverter}}" />
+                                                            <TextBlock Text="{Binding}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </Border>
+
+                                        <!-- 10: OFFICIAL TIME -->
+                                        <Border Grid.Column="10" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <TextBlock Text="{Binding OfficialTime}" 
+                                                       FontFamily="Consolas" FontSize="13.5" FontWeight="Bold" 
+                                                       Foreground="{Binding OfficialTimeColor}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- 11: RANK -->
+                                        <Border Grid.Column="11" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
+                                            <TextBlock Text="{Binding RankDisplay}" 
+                                                       FontSize="14" FontWeight="Bold" Foreground="#0F172A"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- 12: MANUAL STOP BUTTON / FINISH BADGE -->
+                                        <Border Grid.Column="12" Padding="6,0" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                            <Grid>
+                                                <!-- STOP Button (Visible when NOT finished) -->
+                                                <Button Content="STOP"
+                                                        Height="26" Width="68"
+                                                        FontSize="11" FontWeight="Bold"
+                                                        Click="BtnLaneStop_Click">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="#EF4444" />
+                                                            <Setter Property="Foreground" Value="White" />
+                                                            <Setter Property="BorderThickness" Value="0" />
+                                                            <Setter Property="Cursor" Value="Hand" />
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border x:Name="btnBorder" Background="{TemplateBinding Background}" 
+                                                                                CornerRadius="5">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter TargetName="btnBorder" Property="Opacity" Value="0.85" />
+                                                                            </Trigger>
+                                                                            <Trigger Property="IsPressed" Value="True">
+                                                                                <Setter TargetName="btnBorder" Property="Opacity" Value="0.65" />
+                                                                            </Trigger>
+                                                                            <Trigger Property="IsEnabled" Value="False">
+                                                                                <Setter TargetName="btnBorder" Property="Background" Value="#F1F5F9" />
+                                                                                <Setter Property="Foreground" Value="#CBD5E1" />
+                                                                                <Setter Property="Cursor" Value="Arrow" />
+                                                                            </Trigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding CanStop}" Value="False">
+                                                                    <Setter Property="IsEnabled" Value="False" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding CanStop}" Value="True">
+                                                                    <Setter Property="IsEnabled" Value="True" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsFinished}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- FINISH Badge (Visible when Finished) -->
+                                                <Border Height="26" Width="68" CornerRadius="5"
+                                                        Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsFinished}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="FINISH" FontSize="10.5" FontWeight="Bold" Foreground="#15803D" 
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- 3. FOOTER (Matches Reference Image Layout) -->
+        <Border Grid.Row="3" Margin="0,10,0,0" Padding="14,8" Background="#FFFFFF" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- Column 0: MESSAGE LOG -->
+                    <ColumnDefinition Width="2.3*" />
+                    <!-- Column 1: Divider -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Column 2: TIMING LICENCE -->
+                    <ColumnDefinition Width="1.1*" />
+                    <!-- Column 3: Divider -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Column 4: ACCESS -->
+                    <ColumnDefinition Width="1.4*" />
+                    <!-- Column 5: Divider -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Column 6: MOBILE CONNECT -->
+                    <ColumnDefinition Width="1*" />
+                    <!-- Column 7: Divider -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Column 8: PRINT BUTTON -->
+                    <ColumnDefinition Width="0.8*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Hidden legacy compatibility text block -->
+                <TextBlock x:Name="txtServerLog" Visibility="Collapsed" />
+
+                <!-- 1. MESSAGE LOG -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Top" Margin="0,0,8,0">
+                    <TextBlock Text="MESSAGE LOG" FontSize="10" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,4" />
+                    <ScrollViewer x:Name="svMessageLogs" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Height="48">
+                        <ItemsControl x:Name="icMessageLogs" ItemsSource="{Binding MessageLogs, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontFamily="Segoe UI, Consolas" FontSize="11" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,1" TextTrimming="CharacterEllipsis"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <!-- DIVIDER 1 -->
+                <Rectangle Grid.Column="1" Width="1" Fill="#E2E8F0" Margin="10,2" VerticalAlignment="Stretch" />
+
+                <!-- 2. TIMING LICENCE -->
+                <StackPanel Grid.Column="2" VerticalAlignment="Top" Margin="6,0">
+                    <TextBlock Text="TIMING LICENCE" FontSize="10" FontWeight="Bold" Foreground="#475569" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,0,0,4" />
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="ID" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,10,3" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Orcaworks Swim IDN" FontSize="11" FontWeight="Bold" Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- DIVIDER 2 -->
+                <Rectangle Grid.Column="3" Width="1" Fill="#E2E8F0" Margin="10,2" VerticalAlignment="Stretch" />
+
+                <!-- 3. ACCESS -->
+                <StackPanel Grid.Column="4" VerticalAlignment="Top" Margin="6,0">
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock Text="ACCESS" FontSize="10" FontWeight="Bold" Foreground="#475569" VerticalAlignment="Center"/>
+                        
+                        
+                        <Button x:Name="btnShowQrCode" 
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Click="BtnShowQrCode_Click"
+                                ToolTip="Tampilkan QR Code koneksi HP (IP &amp; Access Code)"
+                                Padding="6,1"
+                                Height="19"
+                                Cursor="Hand">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="bd" Background="#F1F5F9" BorderBrush="#94A3B8" BorderThickness="1" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="#E2E8F0"/>
+                                            <Setter TargetName="bd" Property="BorderBrush" Value="#64748B"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="#CBD5E1"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                          
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="📱 QR" FontSize="8.5" FontWeight="Bold" Foreground="#0F172A"/>
+                            </StackPanel>
+                        </Button>
+                        
+                    </Grid>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- IP -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="IP" FontSize="10" FontWeight="Bold" Foreground="#64748B" Margin="0,0,10,2" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="txtAccessIp" Text="192.168.1.4" FontSize="10.5" FontWeight="Bold" Foreground="#0F172A" />
+
+                        <!-- ACCESS CODE -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="ACCESS CODE" FontSize="10" FontWeight="Bold" Foreground="#64748B" Margin="0,0,10,2" />
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="txtAccessCode" Text="----" FontSize="11" FontWeight="Bold" Foreground="#0284C7" Margin="0,0,6,2" />
+                            <Button x:Name="btnRefreshAccessCode" Content="🔄" FontSize="10" Padding="3,0" Margin="0,0,0,2"
+                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                    ToolTip="Generate ulang 4-digit Access Code baru"
+                                    Click="BtnRefreshAccessCode_Click"/>
+                        </StackPanel>
+
+                        <!-- SCOREBOARD -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="SCOREBOARD" FontSize="10" FontWeight="Bold" Foreground="#64748B" Margin="0,0,10,0" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="txtAccessScoreboard" Text="192.168.1.4:3000/scoreboard.html" FontSize="10.5" FontWeight="Bold" Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- DIVIDER 3 -->
+                <Rectangle Grid.Column="5" Width="1" Fill="#E2E8F0" Margin="10,2" VerticalAlignment="Stretch" />
+
+                <!-- 4. MOBILE CONNECT -->
+                <StackPanel Grid.Column="6" VerticalAlignment="Top" Margin="6,0">
+                    <TextBlock Text="MOBILE CONNECT" FontSize="10" FontWeight="Bold" Foreground="#475569" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,0,0,4" />
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- STARTER -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="STARTER" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,8,4" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
+                            <Rectangle x:Name="barStarter1" Width="2.5" Height="4" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barStarter2" Width="2.5" Height="7" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barStarter3" Width="2.5" Height="10" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barStarter4" Width="2.5" Height="13" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" VerticalAlignment="Bottom"/>
+                        </StackPanel>
+
+                        <!-- CHIEF -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="CHIEF" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Rectangle x:Name="barChief1" Width="2.5" Height="4" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barChief2" Width="2.5" Height="7" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barChief3" Width="2.5" Height="10" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barChief4" Width="2.5" Height="13" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" VerticalAlignment="Bottom"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- DIVIDER 4 -->
+                <Rectangle Grid.Column="7" Width="1" Fill="#E2E8F0" Margin="10,2" VerticalAlignment="Stretch" />
+
+                <!-- 5. PRINT BUTTON -->
+                <StackPanel Grid.Column="8" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
+                    <Button x:Name="btnPrintResults" 
+                            Content="PRINT" 
+                            Style="{StaticResource HeaderOutlinedButtonStyle}"
+                            FontWeight="Bold" 
+                            FontSize="13"
+                            Padding="22,10"
+                            Click="BtnPrintResults_Click"
+                            ToolTip="Print official race results to 58mm thermal printer"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
