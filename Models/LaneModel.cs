@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using boston_timing_system.Helpers;
 
 namespace boston_timing_system.Models
@@ -16,7 +17,7 @@ namespace boston_timing_system.Models
         private string _formattedTime = "00.00.00";
         private string _timer1 = "00.00.00";
         private string _timer2 = "00.00.00";
-        private readonly List<TimeSpan> _splits = new();
+        private List<TimeSpan> _splits = new();
         private bool _isRefereeConnected;
         private double _refereeLatencyMs;
         private int? _rank;
@@ -43,7 +44,14 @@ namespace boston_timing_system.Models
         /// Returns true only if a BibNumber was explicitly set (not just inferred from LaneNumber).
         /// Used to prevent ambiguous matching in OWS mode when multiple lanes share the same fallback bib.
         /// </summary>
+        [JsonIgnore]
         public bool HasExplicitBibNumber => !string.IsNullOrWhiteSpace(_bibNumber);
+
+        /// <summary>
+        /// When true, status change callbacks are suppressed to avoid re-entrant saves during heat loading.
+        /// </summary>
+        [JsonIgnore]
+        public bool SuppressStatusCallbacks { get; set; }
 
         public string SwimmerName
         {
@@ -54,10 +62,13 @@ namespace boston_timing_system.Models
                 {
                     if (!string.IsNullOrWhiteSpace(value))
                     {
-                        if (Status == LaneStatus.OFF)
+                        if ((Status == LaneStatus.OFF || Status == LaneStatus.Empty) && !FinishTime.HasValue)
                         {
                             Status = LaneStatus.Ready;
-                            StatusOverrideChangedCallback?.Invoke(this, LaneStatus.Ready);
+                            if (!SuppressStatusCallbacks)
+                            {
+                                StatusOverrideChangedCallback?.Invoke(this, LaneStatus.Ready);
+                            }
                         }
                     }
                     else
@@ -65,7 +76,10 @@ namespace boston_timing_system.Models
                         if (Status == LaneStatus.Ready || Status == LaneStatus.Empty)
                         {
                             Status = LaneStatus.OFF;
-                            StatusOverrideChangedCallback?.Invoke(this, LaneStatus.OFF);
+                            if (!SuppressStatusCallbacks)
+                            {
+                                StatusOverrideChangedCallback?.Invoke(this, LaneStatus.OFF);
+                            }
                         }
                     }
                 }
@@ -93,8 +107,10 @@ namespace boston_timing_system.Models
             "OFF"
         };
 
+        [JsonIgnore]
         public Action<LaneModel, LaneStatus>? StatusOverrideChangedCallback { get; set; }
 
+        [JsonIgnore]
         public string StatusOverride
         {
             get
@@ -127,14 +143,24 @@ namespace boston_timing_system.Models
                         break;
                     case "—":
                     default:
-                        newStatus = FinishTime.HasValue ? LaneStatus.Finished : LaneStatus.Ready;
+                        if (FinishTime.HasValue || Status == LaneStatus.Finished)
+                        {
+                            newStatus = LaneStatus.Finished;
+                        }
+                        else
+                        {
+                            newStatus = string.IsNullOrWhiteSpace(SwimmerName) ? LaneStatus.OFF : LaneStatus.Ready;
+                        }
                         break;
                 }
 
                 if (Status != newStatus)
                 {
                     Status = newStatus;
-                    StatusOverrideChangedCallback?.Invoke(this, newStatus);
+                    if (!SuppressStatusCallbacks)
+                    {
+                        StatusOverrideChangedCallback?.Invoke(this, newStatus);
+                    }
                 }
                 OnPropertyChanged(nameof(StatusOverride));
             }
@@ -152,8 +178,10 @@ namespace boston_timing_system.Models
             set => SetProperty(ref _timer2, value);
         }
 
+        [JsonIgnore]
         public string Timer3 => _formattedTime;
 
+        [JsonIgnore]
         public string ResultTime
         {
             get => _formattedTime;
@@ -187,6 +215,12 @@ namespace boston_timing_system.Models
             get => _status;
             set
             {
+                // Protect finished lane with recorded time from mistakenly reverting to Ready
+                if (value == LaneStatus.Ready && FinishTime.HasValue)
+                {
+                    value = LaneStatus.Finished;
+                }
+
                 if (SetProperty(ref _status, value))
                 {
                     OnPropertyChanged(nameof(StatusDisplay));
@@ -201,7 +235,9 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public bool IsFinished => Status == LaneStatus.Finished;
+        [JsonIgnore]
         public bool IsOff => Status == LaneStatus.OFF;
 
         public TimeSpan? FinishTime
@@ -211,13 +247,30 @@ namespace boston_timing_system.Models
             {
                 if (SetProperty(ref _finishTime, value))
                 {
-                    FormattedTime = value.HasValue ? FormatTime(value.Value) : "00.00.00";
+                    if (value.HasValue)
+                    {
+                        FormattedTime = FormatTime(value.Value);
+                        if (string.IsNullOrEmpty(_timer1) || _timer1 == "00.00.00")
+                        {
+                            Timer1 = FormattedTime;
+                        }
+                        if (Status != LaneStatus.DQ && Status != LaneStatus.DNS && Status != LaneStatus.DNF && Status != LaneStatus.OFF)
+                        {
+                            Status = LaneStatus.Finished;
+                        }
+                    }
+                    else
+                    {
+                        FormattedTime = "00.00.00";
+                    }
                     OnPropertyChanged(nameof(OfficialTime));
                     OnPropertyChanged(nameof(RankDisplay));
+                    OnPropertyChanged(nameof(IsFinished));
                 }
             }
         }
 
+        [JsonIgnore]
         public string OfficialTime
         {
             get
@@ -235,6 +288,7 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public string OfficialTimeColor
         {
             get
@@ -263,10 +317,12 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public string RankDisplay => (Rank.HasValue && Status == LaneStatus.Finished)
             ? Rank.Value.ToString()
             : "—";
 
+        [JsonIgnore]
         public bool IsRefereeConnected
         {
             get => _isRefereeConnected;
@@ -283,6 +339,7 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public double RefereeLatencyMs
         {
             get => _refereeLatencyMs;
@@ -299,25 +356,36 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public string FormattedLatency => _refereeLatencyMs > 0 
             ? $"{_refereeLatencyMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}ms" 
             : "--";
 
         /// <summary>One-way latency below 50 ms — good quality.</summary>
+        [JsonIgnore]
         public bool IsLatencyGood   => _refereeLatencyMs > 0 && _refereeLatencyMs < 50.0;
         /// <summary>One-way latency between 50 and 150 ms — moderate quality.</summary>
+        [JsonIgnore]
         public bool IsLatencyMedium => _refereeLatencyMs >= 50.0 && _refereeLatencyMs <= 150.0;
         /// <summary>One-way latency above 150 ms — poor quality.</summary>
+        [JsonIgnore]
         public bool IsLatencyHigh   => _refereeLatencyMs > 150.0;
 
+        [JsonIgnore]
         public string RefereeConnectionTooltip => IsRefereeConnected
             ? $"Referee Connected (RTT Latency: {FormattedLatency})"
             : "No Phone Connected";
 
-        public IReadOnlyList<TimeSpan> Splits => _splits.AsReadOnly();
+        public List<TimeSpan> Splits
+        {
+            get => _splits;
+            set => SetProperty(ref _splits, value ?? new());
+        }
 
+        [JsonIgnore]
         public string StatusDisplay => Status.ToString();
 
+        [JsonIgnore]
         public bool CanStop => Status == LaneStatus.Running;
 
         public void SetRunning()
@@ -338,6 +406,10 @@ namespace boston_timing_system.Models
                 FinishTime = elapsed;
                 Status = LaneStatus.Finished;
                 FormattedTime = FormatTime(elapsed);
+                if (string.IsNullOrEmpty(_timer1) || _timer1 == "00.00.00")
+                {
+                    Timer1 = FormattedTime;
+                }
             }
         }
 
@@ -366,6 +438,43 @@ namespace boston_timing_system.Models
         {
             // Format: mm.ss.ff
             return $"{(int)time.TotalMinutes:D2}.{time.Seconds:D2}.{time.Milliseconds / 10:D2}";
+        }
+
+        public static bool TryParseFormattedTime(string? formattedTime, out TimeSpan result)
+        {
+            result = TimeSpan.Zero;
+            if (string.IsNullOrWhiteSpace(formattedTime) || formattedTime == "00.00.00" || formattedTime == "--:--.--")
+            {
+                return false;
+            }
+
+            try
+            {
+                string[] parts = formattedTime.Trim().Replace(':', '.').Split('.');
+                if (parts.Length == 3 &&
+                    int.TryParse(parts[0], out int min) &&
+                    int.TryParse(parts[1], out int sec) &&
+                    int.TryParse(parts[2], out int frac))
+                {
+                    int ms = frac * (parts[2].Length == 2 ? 10 : (parts[2].Length == 1 ? 100 : 1));
+                    result = new TimeSpan(0, 0, min, sec, ms);
+                    return true;
+                }
+                else if (parts.Length == 2 &&
+                    int.TryParse(parts[0], out int s) &&
+                    int.TryParse(parts[1], out int frac2))
+                {
+                    int ms = frac2 * (parts[1].Length == 2 ? 10 : 1);
+                    result = new TimeSpan(0, 0, 0, s, ms);
+                    return true;
+                }
+
+                return TimeSpan.TryParse(formattedTime, out result);
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

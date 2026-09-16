@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.Json.Serialization;
 using boston_timing_system.Helpers;
 
 namespace boston_timing_system.Models
@@ -27,6 +28,10 @@ namespace boston_timing_system.Models
 
         public ObservableCollection<RaceEventModel> Events { get; set; } = new();
 
+        public int? ActiveEventNumber { get; set; }
+        public int? ActiveHeatNumber { get; set; }
+
+        [JsonIgnore]
         public RaceEventModel? SelectedEvent
         {
             get => _selectedEvent;
@@ -34,6 +39,7 @@ namespace boston_timing_system.Models
             {
                 if (SetProperty(ref _selectedEvent, value))
                 {
+                    ActiveEventNumber = value?.EventNumber;
                     OnPropertyChanged(nameof(CanGoNextHeat));
                     OnPropertyChanged(nameof(CanGoPrevHeat));
                     OnPropertyChanged(nameof(CanGoNextEvent));
@@ -42,6 +48,7 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public HeatModel? SelectedHeat
         {
             get => _selectedHeat;
@@ -49,6 +56,7 @@ namespace boston_timing_system.Models
             {
                 if (SetProperty(ref _selectedHeat, value))
                 {
+                    ActiveHeatNumber = value?.HeatNumber;
                     OnPropertyChanged(nameof(CurrentHeatDisplay));
                     OnPropertyChanged(nameof(CanGoNextHeat));
                     OnPropertyChanged(nameof(CanGoPrevHeat));
@@ -56,10 +64,12 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public string CurrentHeatDisplay => SelectedHeat != null && SelectedEvent != null
             ? $"{SelectedEvent.DisplayTitle} - Heat {SelectedHeat.HeatNumber} of {SelectedEvent.Heats.Count}"
             : "No Heat Selected";
 
+        [JsonIgnore]
         public bool CanGoNextEvent
         {
             get
@@ -70,6 +80,7 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public bool CanGoPrevEvent
         {
             get
@@ -106,6 +117,7 @@ namespace boston_timing_system.Models
             return false;
         }
 
+        [JsonIgnore]
         public bool CanGoNextHeat
         {
             get
@@ -119,6 +131,7 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public bool CanGoPrevHeat
         {
             get

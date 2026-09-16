@@ -10,7 +10,9 @@
         Height="840" Width="1260"
         MinHeight="700" MinWidth="1020"
         Background="#FFFFFF"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing">
 
     <Window.Resources>
         <helpers:StatusToBrushConverter x:Key="StatusToBrushConverter" />
@@ -146,8 +148,11 @@
 
                 <!-- Left: Logo + BOSTON TIMING -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Image Source="/Assets/logo-boston-cut-new.png" Height="40" Width="40" 
-                           RenderOptions.BitmapScalingMode="HighQuality" Margin="0,0,10,0" VerticalAlignment="Center" />
+                    <Image Height="40" Width="40" Margin="0,0,10,0" VerticalAlignment="Center">
+                        <Image.Source>
+                            <BitmapImage UriSource="/Assets/logo-boston-cut-new.png" DecodePixelWidth="80" />
+                        </Image.Source>
+                    </Image>
                     <TextBlock Text="BOSTON TIMING SYSTEM" 
                                FontWeight="Bold" 
                                FontSize="16" 
@@ -155,8 +160,19 @@
                                VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Right: Digital Clock & Meet Manager Button (Replaces Reference Settings Button) -->
+                <!-- Right: Auto-Save, Clock, Save Meet, Meet Manager, Mode Selector -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Auto-Save Status Badge -->
+                    <Border x:Name="bdrAutoSaveStatus" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" 
+                            CornerRadius="4" Padding="8,3" Margin="0,0,8,0" VerticalAlignment="Center"
+                            ToolTip="Status auto-save penyimpanan persisten">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse x:Name="elpAutoSaveDot" Width="6" Height="6" Fill="#16A34A" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="txtAutoSaveStatus" Text="Auto-save ready" FontSize="11" FontWeight="SemiBold" 
+                                       Foreground="#166534" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Digital Clock Badge (Matches Reference: 09:10:59) -->
                     <Border Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" 
                             CornerRadius="4" Padding="10,3" Margin="0,0,8,0" VerticalAlignment="Center">

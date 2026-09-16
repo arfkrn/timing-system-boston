@@ -14,6 +14,7 @@ namespace boston_timing_system.Views
     public partial class MeetManagerWindow : Window
     {
         private readonly ExcelMeetDataService _excelService;
+        private readonly MeetPersistenceService _persistenceService;
         private readonly TimingMode _timingMode;
         public CompetitionMeetModel Meet { get; private set; }
 
@@ -21,13 +22,14 @@ namespace boston_timing_system.Views
         private HeatModel? _selectedHeat;
         private bool _isUpdatingUi;
 
-        public MeetManagerWindow(CompetitionMeetModel currentMeet, ExcelMeetDataService excelService, TimingMode timingMode = TimingMode.Pool)
+        public MeetManagerWindow(CompetitionMeetModel currentMeet, ExcelMeetDataService excelService, TimingMode timingMode = TimingMode.Pool, MeetPersistenceService? persistenceService = null)
         {
             InitializeComponent();
 
             _timingMode = timingMode;
             Meet = currentMeet ?? new CompetitionMeetModel();
             _excelService = excelService ?? new ExcelMeetDataService();
+            _persistenceService = persistenceService ?? new MeetPersistenceService();
 
             ConfigureModeUi();
             BindMeetData();
@@ -636,6 +638,97 @@ namespace boston_timing_system.Views
         {
             DialogResult = false;
             Close();
+        }
+
+        private async void BtnSaveJson_Click(object sender, RoutedEventArgs e)
+        {
+            Meet.MeetName = txtMeetName.Text.Trim();
+
+            var dialog = new SaveFileDialog
+            {
+                Filter = "Boston Timing Project (*.bts;*.json)|*.bts;*.json|JSON File (*.json)|*.json|All Files (*.*)|*.*",
+                FileName = $"{Meet.MeetName.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.bts",
+                Title = "Save Competition Meet Project"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                btnSaveJson.IsEnabled = false;
+                Mouse.OverrideCursor = Cursors.Wait;
+                try
+                {
+                    await _persistenceService.SaveMeetToFileAsync(Meet, _timingMode, dialog.FileName);
+                    MessageBox.Show(
+                        $"Meet '{Meet.MeetName}' berhasil disimpan ke:\n{dialog.FileName}",
+                        "Simpan Meet Berhasil",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        $"Gagal menyimpan file meet:\n{ex.Message}",
+                        "Simpan Meet Gagal",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
+                finally
+                {
+                    Mouse.OverrideCursor = null;
+                    btnSaveJson.IsEnabled = true;
+                }
+            }
+        }
+
+        private async void BtnOpenJson_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new OpenFileDialog
+            {
+                Filter = "Boston Timing Project (*.bts;*.json)|*.bts;*.json|JSON File (*.json)|*.json|All Files (*.*)|*.*",
+                Title = "Open Competition Meet Project"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                btnOpenJson.IsEnabled = false;
+                Mouse.OverrideCursor = Cursors.Wait;
+                try
+                {
+                    var project = await _persistenceService.LoadMeetFromFileAsync(dialog.FileName);
+                    if (project?.Meet != null)
+                    {
+                        Meet = project.Meet;
+                        txtMeetName.Text = Meet.MeetName;
+                        BindMeetData();
+                        MessageBox.Show(
+                            $"Meet '{Meet.MeetName}' berhasil dimuat ({Meet.Events.Count} Events).",
+                            "Buka Meet Berhasil",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show(
+                            "Format file tidak valid atau data meet kosong.",
+                            "Gagal Memuat Meet",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        $"Gagal membuka file meet:\n{ex.Message}",
+                        "Error Buka Meet",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
+                finally
+                {
+                    Mouse.OverrideCursor = null;
+                    btnOpenJson.IsEnabled = true;
+                }
+            }
         }
 
         private void dgHeatLanes_SelectionChanged(object sender, SelectionChangedEventArgs e)

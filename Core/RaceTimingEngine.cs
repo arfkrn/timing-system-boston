@@ -73,6 +73,9 @@ namespace boston_timing_system.Core
         public bool CanStop => Status == RaceStatus.Running;
         public bool CanReset => Status != RaceStatus.Running;
 
+        private bool _isLoadingHeat;
+        public bool IsLoadingHeat => _isLoadingHeat;
+
         // Events for subscribers (UI, WebSocket broadcaster, Logger, etc.)
         public event Action? RaceStarted;
         public event Action? RaceStopped;
@@ -621,6 +624,8 @@ namespace boston_timing_system.Core
 
         public void SetLaneStatus(int laneNumber, LaneStatus status)
         {
+            if (_isLoadingHeat) return;
+
             bool autoStopped = false;
             LaneModel? targetLane;
 
@@ -664,78 +669,160 @@ namespace boston_timing_system.Core
         {
             lock (_syncLock)
             {
-                _currentHeat = heat;
-
-                if (CurrentMode == TimingMode.OpenWater)
+                _isLoadingHeat = true;
+                try
                 {
-                    OwsRecords.Clear();
-                    foreach (var l in heat.Lanes.Where(x => (x.Status == LaneStatus.Finished || x.Status == LaneStatus.DQ || x.Status == LaneStatus.DNF || x.Status == LaneStatus.DNS) && x.FinishTime.HasValue).OrderBy(x => x.Rank ?? 999))
+                    _currentHeat = heat;
+
+                    foreach (var lane in Lanes)
                     {
-                        var rec = new OwsRecordModel
+                        lane.SuppressStatusCallbacks = true;
+                    }
+
+                    if (CurrentMode == TimingMode.OpenWater)
+                    {
+                        OwsRecords.Clear();
+                        foreach (var l in heat.Lanes.Where(x => (x.Status == LaneStatus.Finished || x.Status == LaneStatus.DQ || x.Status == LaneStatus.DNF || x.Status == LaneStatus.DNS) && x.FinishTime.HasValue).OrderBy(x => x.Rank ?? 999))
                         {
-                            Rank = l.Rank ?? 0,
-                            BibNumber = l.BibNumber,
-                            SwimmerName = l.SwimmerName,
-                            Club = l.Club,
-                            FinishTime = l.FinishTime!.Value,
-                            FormattedTime = l.FormattedTime,
-                            Status = l.Status
-                        };
-                        rec.StatusChangedCallback = HandleOwsRecordStatusChanged;
-                        OwsRecords.Add(rec);
+                            var rec = new OwsRecordModel
+                            {
+                                Rank = l.Rank ?? 0,
+                                BibNumber = l.BibNumber,
+                                SwimmerName = l.SwimmerName,
+                                Club = l.Club,
+                                FinishTime = l.FinishTime!.Value,
+                                FormattedTime = l.FormattedTime,
+                                Status = l.Status
+                            };
+                            rec.StatusChangedCallback = HandleOwsRecordStatusChanged;
+                            OwsRecords.Add(rec);
+                        }
+                        if (OwsRecords.Count > 0)
+                        {
+                            RecalculateOwsRanks();
+                        }
                     }
-                    if (OwsRecords.Count > 0)
+
+                    foreach (var engineLane in Lanes)
                     {
-                        RecalculateOwsRanks();
+                        var heatLane = heat.Lanes.FirstOrDefault(l => l.LaneNumber == engineLane.LaneNumber);
+
+                        bool hasSwimmer = heatLane != null && !string.IsNullOrWhiteSpace(heatLane.SwimmerName);
+                        bool hasRecordedData = heatLane != null && (heatLane.FinishTime.HasValue || 
+                            heatLane.Status == LaneStatus.Finished || 
+                            heatLane.Status == LaneStatus.DQ || 
+                            heatLane.Status == LaneStatus.DNF || 
+                            heatLane.Status == LaneStatus.DNS ||
+                            (!string.IsNullOrEmpty(heatLane.FormattedTime) && heatLane.FormattedTime != "00.00.00"));
+                        bool isActiveLane = heatLane != null && heatLane.Status != LaneStatus.OFF && heatLane.Status != LaneStatus.Empty;
+
+                        if (heatLane != null && (hasSwimmer || hasRecordedData || isActiveLane))
+                        {
+                            TimeSpan? finalFinishTime = heatLane.FinishTime;
+                            if (!finalFinishTime.HasValue && !string.IsNullOrEmpty(heatLane.FormattedTime) && heatLane.FormattedTime != "00.00.00")
+                            {
+                                if (LaneModel.TryParseFormattedTime(heatLane.FormattedTime, out var parsedTime))
+                                {
+                                    finalFinishTime = parsedTime;
+                                    heatLane.FinishTime = parsedTime;
+                                }
+                            }
+
+                            // 1. FinishTime & Timers FIRST
+                            engineLane.FinishTime = finalFinishTime;
+                            engineLane.FormattedTime = finalFinishTime.HasValue 
+                                ? LaneModel.FormatTime(finalFinishTime.Value) 
+                                : (!string.IsNullOrEmpty(heatLane.FormattedTime) ? heatLane.FormattedTime : "00.00.00");
+
+                            engineLane.Timer1 = !string.IsNullOrEmpty(heatLane.Timer1) && heatLane.Timer1 != "00.00.00"
+                                ? heatLane.Timer1
+                                : (finalFinishTime.HasValue ? LaneModel.FormatTime(finalFinishTime.Value) : "00.00.00");
+                            engineLane.Timer2 = !string.IsNullOrEmpty(heatLane.Timer2) ? heatLane.Timer2 : "00.00.00";
+
+                            // 2. Status & Swimmer Info
+                            LaneStatus targetStatus = heatLane.Status;
+                            if (finalFinishTime.HasValue && targetStatus != LaneStatus.DQ && targetStatus != LaneStatus.DNS && targetStatus != LaneStatus.DNF && targetStatus != LaneStatus.OFF)
+                            {
+                                targetStatus = LaneStatus.Finished;
+                            }
+                            else if (targetStatus == LaneStatus.OFF && hasSwimmer)
+                            {
+                                targetStatus = LaneStatus.Ready;
+                            }
+                            engineLane.Status = targetStatus;
+                            heatLane.Status = targetStatus;
+                            heatLane.Timer1 = engineLane.Timer1;
+
+                            engineLane.SwimmerName = heatLane.SwimmerName ?? string.Empty;
+                            engineLane.Club = heatLane.Club ?? string.Empty;
+                            engineLane.SeedTime = heatLane.SeedTime ?? string.Empty;
+
+                            engineLane.Rank = heatLane.Rank;
+                            if (heatLane.Splits != null && heatLane.Splits.Count > 0)
+                            {
+                                engineLane.Splits = new List<TimeSpan>(heatLane.Splits);
+                            }
+                            else
+                            {
+                                engineLane.Splits.Clear();
+                            }
+                        }
+                        else
+                        {
+                            engineLane.FinishTime = null;
+                            engineLane.FormattedTime = "00.00.00";
+                            engineLane.Rank = null;
+                            engineLane.Timer1 = "00.00.00";
+                            engineLane.Timer2 = "00.00.00";
+                            engineLane.Status = LaneStatus.OFF;
+                            engineLane.SwimmerName = string.Empty;
+                            engineLane.Club = string.Empty;
+                            engineLane.SeedTime = string.Empty;
+                            engineLane.Splits.Clear();
+                        }
                     }
-                }
 
-                foreach (var engineLane in Lanes)
-                {
-                    var heatLane = heat.Lanes.FirstOrDefault(l => l.LaneNumber == engineLane.LaneNumber);
-
-                    if (heatLane != null && !string.IsNullOrWhiteSpace(heatLane.SwimmerName))
+                    // Check if the loaded heat already has recorded results
+                    bool hasResults = heat.HasResults;
+                    if (hasResults)
                     {
-                        engineLane.SwimmerName = heatLane.SwimmerName;
-                        engineLane.Club = heatLane.Club;
-                        engineLane.SeedTime = heatLane.SeedTime;
-                        engineLane.Status = heatLane.Status != LaneStatus.OFF ? heatLane.Status : LaneStatus.Ready;
-                        engineLane.FinishTime = heatLane.FinishTime;
-                        engineLane.FormattedTime = heatLane.FinishTime.HasValue 
-                            ? LaneModel.FormatTime(heatLane.FinishTime.Value) 
-                            : "00.00.00";
-                        engineLane.Rank = heatLane.Rank;
+                        heat.IsCompleted = true;
+                        Status = RaceStatus.Finished;
+                        CalculateRanks();
+                        foreach (var engLane in Lanes)
+                        {
+                            var hl = heat.Lanes.FirstOrDefault(l => l.LaneNumber == engLane.LaneNumber);
+                            if (hl != null)
+                            {
+                                hl.Rank = engLane.Rank;
+                                hl.Status = engLane.Status;
+                                hl.Timer1 = engLane.Timer1;
+                                hl.Timer2 = engLane.Timer2;
+                                hl.FinishTime = engLane.FinishTime;
+                                hl.FormattedTime = engLane.FormattedTime;
+                            }
+                        }
+                        var maxFinish = Lanes
+                            .Where(l => l.FinishTime.HasValue)
+                            .Select(l => l.FinishTime!.Value)
+                            .DefaultIfEmpty(TimeSpan.Zero)
+                            .Max();
+                        FormattedElapsedTime = maxFinish > TimeSpan.Zero ? LaneModel.FormatTime(maxFinish) : "00.00.00";
                     }
                     else
                     {
-                        engineLane.SwimmerName = string.Empty;
-                        engineLane.Club = string.Empty;
-                        engineLane.SeedTime = string.Empty;
-                        engineLane.Status = LaneStatus.OFF;
-                        engineLane.FinishTime = null;
-                        engineLane.FormattedTime = "00.00.00";
-                        engineLane.Rank = null;
+                        heat.IsCompleted = false;
+                        Status = RaceStatus.Ready;
+                        FormattedElapsedTime = "00.00.00";
                     }
                 }
-
-                // Check if the loaded heat already has recorded results
-                bool hasResults = heat.HasResults;
-                if (hasResults)
+                finally
                 {
-                    heat.IsCompleted = true;
-                    Status = RaceStatus.Finished;
-                    var maxFinish = heat.Lanes
-                        .Where(l => l.FinishTime.HasValue)
-                        .Select(l => l.FinishTime!.Value)
-                        .DefaultIfEmpty(TimeSpan.Zero)
-                        .Max();
-                    FormattedElapsedTime = maxFinish > TimeSpan.Zero ? LaneModel.FormatTime(maxFinish) : "00.00.00";
-                }
-                else
-                {
-                    heat.IsCompleted = false;
-                    Status = RaceStatus.Ready;
-                    FormattedElapsedTime = "00.00.00";
+                    foreach (var lane in Lanes)
+                    {
+                        lane.SuppressStatusCallbacks = false;
+                    }
+                    _isLoadingHeat = false;
                 }
             }
         }
@@ -744,6 +831,11 @@ namespace boston_timing_system.Core
         {
             lock (_syncLock)
             {
+                if (_isLoadingHeat)
+                {
+                    return;
+                }
+
                 if (CurrentMode == TimingMode.OpenWater)
                 {
                     foreach (var record in OwsRecords)
@@ -788,9 +880,22 @@ namespace boston_timing_system.Core
 
                     if (heatLane != null)
                     {
+                        if (engineLane.FinishTime.HasValue && engineLane.Status != LaneStatus.DQ && engineLane.Status != LaneStatus.DNS && engineLane.Status != LaneStatus.DNF && engineLane.Status != LaneStatus.OFF)
+                        {
+                            engineLane.Status = LaneStatus.Finished;
+                        }
                         heatLane.Status = engineLane.Status;
                         heatLane.FinishTime = engineLane.FinishTime;
                         heatLane.FormattedTime = engineLane.FormattedTime;
+                        heatLane.Timer1 = !string.IsNullOrEmpty(engineLane.Timer1) && engineLane.Timer1 != "00.00.00"
+                            ? engineLane.Timer1
+                            : (engineLane.FinishTime.HasValue ? LaneModel.FormatTime(engineLane.FinishTime.Value) : "00.00.00");
+                        heatLane.Timer2 = engineLane.Timer2;
+                        heatLane.Rank = engineLane.Rank;
+                        if (engineLane.Splits.Count > 0)
+                        {
+                            heatLane.Splits = new List<TimeSpan>(engineLane.Splits);
+                        }
                     }
                 }
                 heat.CalculateRanks();
@@ -841,7 +946,7 @@ namespace boston_timing_system.Core
                 var finalTime = _timer.Stop();
                 Status = RaceStatus.Finished;
 
-                var lastFinisherTime = Lanes.Where(l => l.Status == LaneStatus.Finished && l.FinishTime.HasValue).Select(l => l.FinishTime.Value).DefaultIfEmpty(_timer.Elapsed).Max();
+                var lastFinisherTime = Lanes.Where(l => l.Status == LaneStatus.Finished && l.FinishTime.HasValue).Select(l => l.FinishTime!.Value).DefaultIfEmpty(_timer.Elapsed).Max();
 
                 CalculateRanks();
                 FormattedElapsedTime = LaneModel.FormatTime(lastFinisherTime);

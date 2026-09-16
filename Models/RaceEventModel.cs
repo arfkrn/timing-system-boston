@@ -1,5 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Text.Json.Serialization;
 using boston_timing_system.Helpers;
 
 namespace boston_timing_system.Models
@@ -64,7 +66,13 @@ namespace boston_timing_system.Models
 
         public ObservableCollection<HeatModel> Heats { get; set; } = new();
 
+        [JsonIgnore]
         public string DisplayTitle => $"Event #{EventNumber:D2} - {EventName}";
+
+        [JsonConstructor]
+        public RaceEventModel()
+        {
+        }
 
         public RaceEventModel(int eventNumber = 1, string eventName = "50m Freestyle")
         {

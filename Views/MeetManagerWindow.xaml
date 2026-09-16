@@ -200,8 +200,18 @@
                                FontSize="17" FontWeight="Bold" Foreground="#0F172A" Margin="0,2,0,0"/>
                 </StackPanel>
 
-                <!-- Excel Action Buttons -->
+                <!-- Action Buttons -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="btnOpenJson" Content="Open Meet (.json)" 
+                            Style="{StaticResource HeaderButtonStyle}" 
+                            Background="#4F46E5" Margin="0,0,8,0" 
+                            Click="BtnOpenJson_Click"
+                            ToolTip="Buka file project lomba dari file JSON/BTS"/>
+                    <Button x:Name="btnSaveJson" Content="Save Meet (.json)" 
+                            Style="{StaticResource HeaderButtonStyle}" 
+                            Background="#2563EB" Margin="0,0,8,0" 
+                            Click="BtnSaveJson_Click"
+                            ToolTip="Simpan seluruh susunan lomba &amp; hasil ke file JSON/BTS"/>
                     <Button x:Name="btnDownloadTemplate" Content="Download Template" 
                             Style="{StaticResource HeaderButtonStyle}" 
                             Background="#475569" Margin="0,0,8,0" 

@@ -40,10 +40,11 @@ namespace boston_timing_system.Models
         {
             if (lane == null) return false;
 
+            if (lane.FinishTime.HasValue) return true;
+
             if (lane.Status == LaneStatus.Finished)
             {
-                return lane.FinishTime.HasValue || 
-                       (!string.IsNullOrEmpty(lane.FormattedTime) && lane.FormattedTime != "00.00.00");
+                return !string.IsNullOrEmpty(lane.FormattedTime) && lane.FormattedTime != "00.00.00";
             }
 
             return lane.Status == LaneStatus.DQ || 

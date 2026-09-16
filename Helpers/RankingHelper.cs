@@ -23,7 +23,11 @@ namespace boston_timing_system.Helpers
 
             foreach (var lane in lanes)
             {
-                if (lane.Status != LaneStatus.Finished)
+                if (lane.FinishTime.HasValue && lane.Status != LaneStatus.DQ && lane.Status != LaneStatus.DNS && lane.Status != LaneStatus.DNF && lane.Status != LaneStatus.OFF)
+                {
+                    lane.Status = LaneStatus.Finished;
+                }
+                else if (lane.Status != LaneStatus.Finished)
                 {
                     lane.Rank = null;
                 }

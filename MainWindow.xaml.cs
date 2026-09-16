@@ -22,6 +22,8 @@ namespace boston_timing_system
         private readonly DispatcherTimer _clockTimer;
         private readonly ExcelMeetDataService _excelService = new();
         private readonly Services.ThermalPrintService _thermalService = new();
+        private readonly MeetPersistenceService _persistenceService = new();
+        private bool _isLoadingHeat;
 
         private CompetitionMeetModel _poolMeet = new();
         private CompetitionMeetModel _owsMeet = new();
@@ -48,6 +50,8 @@ namespace boston_timing_system
         {
             InitializeComponent();
 
+            _persistenceService.AutoSaveStatusChanged += (msg) => RunOnUi(() => UpdateAutoSaveStatusUi(msg));
+
             // 1. Initialize timing engine with 10 lanes
             _engine = new RaceTimingEngine(defaultLaneCount: 10);
             icLanes.ItemsSource = _engine.Lanes;
@@ -63,11 +67,13 @@ namespace boston_timing_system
             {
                 UpdateOwsSummaryUi();
                 AddLogMessage($"[OWS FINISH] #{rec.Rank} {rec.FormattedTime} (Bib {rec.BibNumber} {rec.SwimmerName})");
+                TriggerAutoSave(immediate: false);
             });
             _engine.OwsRecordStatusChanged += (rec, status) => RunOnUi(() =>
             {
                 UpdateOwsSummaryUi();
                 AddLogMessage($"[OWS STATUS] BIB {rec.BibNumber} ({rec.SwimmerName}) status diubah menjadi {status}.");
+                TriggerAutoSave(immediate: false);
             });
 
             // 2. Initialize WebSocket server with port fallback (tries 8181 → 8182 → 8183 → 8080)
@@ -181,12 +187,12 @@ namespace boston_timing_system
 
         private void BtnOpenMeetManager_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null && _engine.Status == RaceStatus.Finished && _currentMeet.SelectedHeat.HasResults)
+            if (_currentMeet.SelectedHeat != null)
             {
                 _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
             }
 
-            var meetManagerWin = new MeetManagerWindow(_currentMeet, _excelService, _engine.CurrentMode)
+            var meetManagerWin = new MeetManagerWindow(_currentMeet, _excelService, _engine.CurrentMode, _persistenceService)
             {
                 Owner = this
             };
@@ -208,6 +214,7 @@ namespace boston_timing_system
                     if (targetHeat != null)
                     {
                         LoadHeat(targetHeat);
+                        icLanes.Items.Refresh();
                     }
                     else
                     {
@@ -227,12 +234,13 @@ namespace boston_timing_system
                 }
 
                 txtServerLog.Text = $"Meet '{_currentMeet.MeetName}' active ({_currentMeet.Events.Count} Events).";
+                TriggerAutoSave(immediate: true);
             }
         }
 
         private void BtnPrevEvent_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null && _engine.Status == RaceStatus.Finished)
+            if (_currentMeet.SelectedHeat != null)
             {
                 _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
             }
@@ -254,7 +262,7 @@ namespace boston_timing_system
 
         private void BtnNextEvent_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null && _engine.Status == RaceStatus.Finished)
+            if (_currentMeet.SelectedHeat != null)
             {
                 _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
             }
@@ -294,54 +302,63 @@ namespace boston_timing_system
             if (_currentMeet.SelectedHeat != null && _currentMeet.SelectedHeat != selectedHeat && _engine.Status == RaceStatus.Finished)
             {
                 _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                TriggerAutoSave(immediate: false);
             }
 
-            _currentMeet.SelectedHeat = selectedHeat;
-            _engine.LoadHeat(selectedHeat);
-
-            UpdateEventDisplay();
-            UpdateHeatDisplay();
-
-            // Check if loaded heat already has results
-            if (_engine.Status == RaceStatus.Finished)
+            _isLoadingHeat = true;
+            try
             {
-                _displayTimer.Stop();
-                txtMasterTimer.Text = _engine.FormattedElapsedTime;
-                txtRaceStatus.Text = "STATUS: FINISHED";
-                txtRaceStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9A3412"));
-                bdRaceStatus.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFEDD5"));
-                bdRaceStatus.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FED7AA"));
-                AddLogMessage($"Loaded {selectedHeat.DisplayTitle} [FINISHED - Results Recorded]");
+                _currentMeet.SelectedHeat = selectedHeat;
+                _engine.LoadHeat(selectedHeat);
+
+                UpdateEventDisplay();
+                UpdateHeatDisplay();
+
+                // Check if loaded heat already has results
+                if (_engine.Status == RaceStatus.Finished)
+                {
+                    _displayTimer.Stop();
+                    txtMasterTimer.Text = _engine.FormattedElapsedTime;
+                    txtRaceStatus.Text = "STATUS: FINISHED";
+                    txtRaceStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9A3412"));
+                    bdRaceStatus.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFEDD5"));
+                    bdRaceStatus.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FED7AA"));
+                    AddLogMessage($"Loaded {selectedHeat.DisplayTitle} [FINISHED - Results Recorded]");
+                }
+                else
+                {
+                    _displayTimer.Stop();
+                    txtMasterTimer.Text = "00.00.00";
+                    txtRaceStatus.Text = "STATUS: READY";
+                    txtRaceStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0369A1"));
+                    bdRaceStatus.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E0F2FE"));
+                    bdRaceStatus.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BAE6FD"));
+                    AddLogMessage($"Loaded {selectedHeat.DisplayTitle} [READY]");
+                }
+
+                UpdateUiState();
+
+                // Notify all connected React Native devices with new event & heat context
+                if (_currentMeet.SelectedEvent != null)
+                {
+                    _wsServer.UpdateCurrentMeetContext(
+                        _currentMeet.MeetName,
+                        _currentMeet.SelectedEvent.EventNumber,
+                        _currentMeet.SelectedEvent.EventName,
+                        selectedHeat.HeatNumber);
+                }
+
+                UpdateNavigationButtonStates();
             }
-            else
+            finally
             {
-                _displayTimer.Stop();
-                txtMasterTimer.Text = "00.00.00";
-                txtRaceStatus.Text = "STATUS: READY";
-                txtRaceStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0369A1"));
-                bdRaceStatus.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E0F2FE"));
-                bdRaceStatus.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BAE6FD"));
-                AddLogMessage($"Loaded {selectedHeat.DisplayTitle} [READY]");
+                _isLoadingHeat = false;
             }
-
-            UpdateUiState();
-
-            // Notify all connected React Native devices with new event & heat context
-            if (_currentMeet.SelectedEvent != null)
-            {
-                _wsServer.UpdateCurrentMeetContext(
-                    _currentMeet.MeetName,
-                    _currentMeet.SelectedEvent.EventNumber,
-                    _currentMeet.SelectedEvent.EventName,
-                    selectedHeat.HeatNumber);
-            }
-
-            UpdateNavigationButtonStates();
         }
 
         private void BtnPrevHeat_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null && _engine.Status == RaceStatus.Finished)
+            if (_currentMeet.SelectedHeat != null)
             {
                 _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
             }
@@ -357,7 +374,7 @@ namespace boston_timing_system
 
         private void BtnNextHeat_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null && _engine.Status == RaceStatus.Finished)
+            if (_currentMeet.SelectedHeat != null)
             {
                 _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
             }
@@ -437,6 +454,7 @@ namespace boston_timing_system
 
             UpdateUiState();
             UpdateNavigationButtonStates();
+            TriggerAutoSave(immediate: true);
         }
 
         private void BtnResetRace_Click(object sender, RoutedEventArgs e)
@@ -490,6 +508,7 @@ namespace boston_timing_system
 
             UpdateUiState();
             UpdateNavigationButtonStates();
+            TriggerAutoSave(immediate: false);
             AddLogMessage("Race timer reset [READY]");
         }
 
@@ -500,6 +519,11 @@ namespace boston_timing_system
                 if (_engine.IsRunning && lane.Status == LaneStatus.Running)
                 {
                     _engine.StopLane(lane.LaneNumber);
+                    if (_currentMeet.SelectedHeat != null)
+                    {
+                        _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                    }
+                    TriggerAutoSave(immediate: false);
                 }
             }
         }
@@ -510,6 +534,11 @@ namespace boston_timing_system
             if (sender is Button { DataContext: LaneModel lane })
             {
                 _engine.StopLane(lane.LaneNumber);
+                if (_currentMeet.SelectedHeat != null)
+                {
+                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                }
+                TriggerAutoSave(immediate: false);
             }
         }
 
@@ -629,7 +658,7 @@ namespace boston_timing_system
             }
 
             // Save results of currently loaded heat before switching
-            if (_currentMeet.SelectedHeat != null && _engine.Status == RaceStatus.Finished && _currentMeet.SelectedHeat.HasResults)
+            if (_currentMeet.SelectedHeat != null)
             {
                 _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
             }
@@ -689,6 +718,7 @@ namespace boston_timing_system
             }
 
             AddLogMessage($"Switched to {targetMode} Meet: '{_currentMeet.MeetName}' ({_currentMeet.Events.Count} Events)");
+            TriggerAutoSave(immediate: false);
         }
 
         private void ApplyTimingModeUi(TimingMode mode)
@@ -908,10 +938,11 @@ namespace boston_timing_system
 
         private void BtnPrintResults_Click(object sender, RoutedEventArgs e)
         {
+            var currentMode = _engine.CurrentMode;
             var heatToPrint = _currentMeet.SelectedHeat;
             if (heatToPrint == null)
             {
-                heatToPrint = new HeatModel(1, 1, _currentMeet.SelectedEvent?.EventName ?? "Race Event");
+                heatToPrint = new HeatModel(1, 1, _currentMeet.SelectedEvent?.EventName ?? (currentMode == TimingMode.OpenWater ? "OWS Race" : "Race Event"));
                 _engine.SaveResultsToHeat(heatToPrint);
             }
             else
@@ -919,11 +950,48 @@ namespace boston_timing_system
                 _engine.SaveResultsToHeat(heatToPrint);
             }
 
+            if (currentMode == TimingMode.OpenWater && _engine.OwsRecords.Count > 0)
+            {
+                foreach (var record in _engine.OwsRecords)
+                {
+                    var targetLane = heatToPrint.Lanes.FirstOrDefault(l =>
+                        l.HasExplicitBibNumber
+                            ? l.BibNumber.Equals(record.BibNumber, StringComparison.OrdinalIgnoreCase)
+                            : (!string.IsNullOrWhiteSpace(record.BibNumber) && l.LaneNumber.ToString() == record.BibNumber));
+
+                    if (targetLane == null)
+                    {
+                        int laneNum = int.TryParse(record.BibNumber, out int parsedNum) ? parsedNum : (heatToPrint.Lanes.Count + 1);
+                        targetLane = new LaneModel
+                        {
+                            LaneNumber = laneNum,
+                            BibNumber = record.BibNumber,
+                            SwimmerName = record.SwimmerName,
+                            Club = record.Club,
+                            FinishTime = record.FinishTime,
+                            FormattedTime = record.FormattedTime,
+                            Rank = record.Rank > 0 ? record.Rank : null,
+                            Status = record.Status
+                        };
+                        heatToPrint.Lanes.Add(targetLane);
+                    }
+                    else
+                    {
+                        targetLane.FinishTime = record.FinishTime;
+                        targetLane.FormattedTime = record.FormattedTime;
+                        targetLane.Rank = record.Rank > 0 ? record.Rank : null;
+                        targetLane.Status = record.Status;
+                        if (!string.IsNullOrWhiteSpace(record.SwimmerName)) targetLane.SwimmerName = record.SwimmerName;
+                        if (!string.IsNullOrWhiteSpace(record.Club)) targetLane.Club = record.Club;
+                    }
+                }
+            }
+
             heatToPrint.CalculateRanks();
 
             try
             {
-                var printWindow = new Views.ThermalPrintWindow(_currentMeet, heatToPrint, _thermalService)
+                var printWindow = new Views.ThermalPrintWindow(_currentMeet, heatToPrint, _thermalService, currentMode)
                 {
                     Owner = this
                 };
@@ -932,7 +1000,8 @@ namespace boston_timing_system
 
                 if (printWindow.PrintSuccessful)
                 {
-                    AddLogMessage($"Race results printed to 58mm thermal printer [Heat {heatToPrint.HeatNumber}]");
+                    string modeDesc = currentMode == TimingMode.OpenWater ? "OWS" : $"Heat {heatToPrint.HeatNumber}";
+                    AddLogMessage($"Race results printed to 58mm thermal printer [{modeDesc}]");
                 }
             }
             catch (Exception ex)
@@ -1018,6 +1087,7 @@ namespace boston_timing_system
 
                 UpdateUiState();
                 UpdateNavigationButtonStates();
+                TriggerAutoSave(immediate: true);
                 AddLogMessage($"Race stopped. Final clock: {_engine.FormattedElapsedTime}");
             });
         }
@@ -1041,24 +1111,33 @@ namespace boston_timing_system
 
         private void OnLaneFinished(LaneModel lane, TimeSpan finishTime)
         {
+            if (_isLoadingHeat || _engine.IsLoadingHeat) return;
+
             RunOnUi(() =>
             {
-                // If all finished, auto-save results to current heat
-                if (_engine.Status == RaceStatus.Finished && _currentMeet.SelectedHeat != null)
+                if (_isLoadingHeat || _engine.IsLoadingHeat) return;
+
+                if (_currentMeet.SelectedHeat != null)
                 {
                     _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
                 }
+                TriggerAutoSave(immediate: false);
             });
         }
 
         private void OnLaneStatusChanged(LaneModel lane, LaneStatus status)
         {
+            if (_isLoadingHeat || _engine.IsLoadingHeat) return;
+
             RunOnUi(() =>
             {
+                if (_isLoadingHeat || _engine.IsLoadingHeat) return;
+
                 if (_currentMeet.SelectedHeat != null)
                 {
                     _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
                 }
+                TriggerAutoSave(immediate: false);
                 AddLogMessage($"Lane {lane.LaneNumber} status set to {status}");
             });
         }
@@ -1069,6 +1148,181 @@ namespace boston_timing_system
             btnStopRace.IsEnabled = _engine.CanStop;
             btnResetRace.IsEnabled = _engine.CanReset;
         }
+
+        #region Session Persistence & Auto-Save Lifecycle
+
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (_persistenceService.HasAutoSaveSession())
+            {
+                var timestamp = _persistenceService.GetAutoSaveTimestamp();
+                string timeStr = timestamp.HasValue ? timestamp.Value.ToString("dd MMM yyyy HH:mm:ss") : "sebelumnya";
+
+                var result = MessageBox.Show(
+                    $"Ditemukan sesi lomba sebelumnya yang tersimpan otomatis pada:\n{timeStr}\n\n" +
+                    "Apakah Anda ingin memulihkan sesi tersebut?\n\n" +
+                    "• Pilih [Yes] untuk melanjutkan sesi lomba sebelumnya\n" +
+                    "• Pilih [No] untuk memulai sesi lomba baru (sesi lama akan direset)",
+                    "Pemulihan Sesi Lomba (Crash Recovery)",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    await RestoreSavedSessionAsync();
+                }
+                else
+                {
+                    _persistenceService.ClearAutoSaveSession();
+                    AddLogMessage("Sesi lama direset. Memulai kompetisi baru.");
+                }
+            }
+        }
+
+        private void Window_Closing(object? sender, CancelEventArgs e)
+        {
+            try
+            {
+                if (_currentMeet.SelectedHeat != null)
+                {
+                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                }
+                TriggerAutoSave(immediate: true);
+            }
+            catch
+            {
+                // Best effort on shutdown
+            }
+        }
+
+        private void TriggerAutoSave(bool immediate = false)
+        {
+            if (_isLoadingHeat || _engine.IsLoadingHeat) return;
+
+            try
+            {
+                if (_currentMeet.SelectedHeat != null)
+                {
+                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                }
+
+                var dto = new MeetSessionDto
+                {
+                    ActiveTimingMode = _engine.CurrentMode,
+                    PoolMeet = _poolMeet,
+                    OwsMeet = _owsMeet,
+                    ActiveOwsRecords = _engine.OwsRecords.ToList()
+                };
+
+                if (immediate)
+                {
+                    _persistenceService.SaveSessionImmediate(dto);
+                }
+                else
+                {
+                    _persistenceService.RequestDebouncedAutoSave(dto, delayMs: 600);
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLogMessage($"[AUTOSAVE ERROR] {ex.Message}");
+            }
+        }
+
+        private void UpdateAutoSaveStatusUi(string message)
+        {
+            if (txtAutoSaveStatus != null)
+            {
+                txtAutoSaveStatus.Text = message;
+            }
+        }
+
+        private async Task RestoreSavedSessionAsync()
+        {
+            try
+            {
+                Mouse.OverrideCursor = Cursors.Wait;
+                var session = await _persistenceService.LoadAutoSaveSessionAsync();
+                if (session == null)
+                {
+                    MessageBox.Show("Gagal membaca file sesi auto-save.", "Pemulihan Gagal", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                _poolMeet = session.PoolMeet ?? new CompetitionMeetModel { MeetName = "Swimming Competition Meet" };
+                _owsMeet = session.OwsMeet ?? new CompetitionMeetModel { MeetName = "Open Water Swimming Meet" };
+
+                if (session.ActiveTimingMode != _engine.CurrentMode)
+                {
+                    _engine.SetMode(session.ActiveTimingMode);
+                    ApplyTimingModeUi(session.ActiveTimingMode);
+                }
+
+                if (session.ActiveTimingMode == TimingMode.OpenWater && session.ActiveOwsRecords != null)
+                {
+                    _engine.OwsRecords.Clear();
+                    foreach (var rec in session.ActiveOwsRecords)
+                    {
+                        _engine.OwsRecords.Add(rec);
+                    }
+                    UpdateOwsSummaryUi();
+                }
+
+                txtMeetTitle.Text = _currentMeet.MeetName;
+
+                if (_currentMeet.Events.Count > 0)
+                {
+                    RaceEventModel? targetEvent = null;
+                    if (_currentMeet.ActiveEventNumber.HasValue)
+                    {
+                        targetEvent = _currentMeet.Events.FirstOrDefault(ev => ev.EventNumber == _currentMeet.ActiveEventNumber.Value);
+                    }
+                    targetEvent ??= _currentMeet.Events[0];
+                    _currentMeet.SelectedEvent = targetEvent;
+
+                    HeatModel? targetHeat = null;
+                    if (_currentMeet.ActiveHeatNumber.HasValue)
+                    {
+                        targetHeat = targetEvent.Heats.FirstOrDefault(h => h.HeatNumber == _currentMeet.ActiveHeatNumber.Value);
+                    }
+                    targetHeat ??= targetEvent.Heats.FirstOrDefault();
+
+                    if (targetHeat != null)
+                    {
+                        LoadHeat(targetHeat);
+                        icLanes.Items.Refresh();
+                    }
+                    else
+                    {
+                        _currentMeet.SelectedHeat = null;
+                        UpdateEventDisplay();
+                        UpdateHeatDisplay();
+                        UpdateNavigationButtonStates();
+                    }
+                }
+                else
+                {
+                    _currentMeet.SelectedEvent = null;
+                    _currentMeet.SelectedHeat = null;
+                    UpdateEventDisplay();
+                    UpdateHeatDisplay();
+                    UpdateNavigationButtonStates();
+                }
+
+                AddLogMessage($"Sesi lomba '{_currentMeet.MeetName}' ({_currentMeet.Events.Count} Event) berhasil dipulihkan.");
+            }
+            catch (Exception ex)
+            {
+                AddLogMessage($"[RESTORE ERROR] {ex.Message}");
+                MessageBox.Show($"Terjadi kesalahan saat memulihkan sesi:\n{ex.Message}", "Pemulihan Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+            }
+        }
+
+        #endregion
 
         protected override void OnClosed(EventArgs e)
         {

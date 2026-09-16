@@ -17,6 +17,9 @@ namespace boston_timing_system.Services
     {
         private const int LineWidth = 32; // 32 characters for standard 58mm receipt
 
+        private static BitmapSource? _cachedLogo;
+        private static readonly object _logoLock = new();
+
         /// <summary>
         /// Retrieves list of installed printer names from the local Windows print server.
         /// </summary>
@@ -25,8 +28,8 @@ namespace boston_timing_system.Services
             var list = new List<string>();
             try
             {
-                var printServer = new LocalPrintServer();
-                var queues = printServer.GetPrintQueues(new[] {
+                using var printServer = new LocalPrintServer();
+                using var queues = printServer.GetPrintQueues(new[] {
                     EnumeratedPrintQueueTypes.Local,
                     EnumeratedPrintQueueTypes.Connections
                 });
@@ -34,6 +37,7 @@ namespace boston_timing_system.Services
                 foreach (var queue in queues)
                 {
                     list.Add(queue.Name);
+                    queue.Dispose();
                 }
             }
             catch
@@ -45,7 +49,7 @@ namespace boston_timing_system.Services
             {
                 try
                 {
-                    var server = new LocalPrintServer();
+                    using var server = new LocalPrintServer();
                     if (server.DefaultPrintQueue != null)
                     {
                         list.Add(server.DefaultPrintQueue.Name);
@@ -76,20 +80,28 @@ namespace boston_timing_system.Services
 
         /// <summary>
         /// Generates clean 32-character monospace receipt text suitable for 58mm printers.
+        /// Supports both Pool Swimming (LN | NAME | TIME | RK) and Open Water Swimming (RK | BIB | NAME | TIME).
         /// </summary>
-        public string GenerateReceiptText(CompetitionMeetModel meet, HeatModel heat)
+        public string GenerateReceiptText(CompetitionMeetModel meet, HeatModel heat, TimingMode timingMode = TimingMode.Pool)
         {
             var sb = new StringBuilder();
             heat.CalculateRanks();
 
+            bool isOws = timingMode == TimingMode.OpenWater;
+
             // Header
             sb.AppendLine("================================");
             sb.AppendLine(CenterText("BOSTON TIMING PRO", LineWidth));
-            sb.AppendLine(CenterText("OFFICIAL RACE RESULTS", LineWidth));
+            sb.AppendLine(CenterText(isOws ? "OPEN WATER SWIMMING" : "OFFICIAL RACE RESULTS", LineWidth));
+            if (isOws)
+            {
+                sb.AppendLine(CenterText("OFFICIAL RACE RESULTS", LineWidth));
+            }
             sb.AppendLine("================================");
 
             // Competition Info matching reference layout
-            string meetTitle = string.IsNullOrWhiteSpace(meet.MeetName) ? "SWIMMING CHAMPIONSHIP" : meet.MeetName.ToUpperInvariant();
+            string defaultTitle = isOws ? "OPEN WATER SWIMMING" : "SWIMMING CHAMPIONSHIP";
+            string meetTitle = string.IsNullOrWhiteSpace(meet.MeetName) ? defaultTitle : meet.MeetName.ToUpperInvariant();
             sb.AppendLine(CenterText(meetTitle, LineWidth));
 
             string dateStr = meet.MeetDate.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("id-ID")).ToUpperInvariant();
@@ -101,54 +113,114 @@ namespace boston_timing_system.Services
             sb.AppendLine(TruncateOrPad($"HEAT #{heat.HeatNumber}", LineWidth));
             sb.AppendLine("--------------------------------");
 
-            // Columns Header: LN NAME                  TIME RK
-            // Format: " 1 BUDI SANTOSO      00.27.45  1"
-            sb.AppendLine("LN NAME                  TIME RK");
-            sb.AppendLine("--------------------------------");
-
-            var activeLanes = heat.Lanes
-                .Where(l => l.Status != LaneStatus.OFF || !string.IsNullOrWhiteSpace(l.SwimmerName))
-                .OrderBy(l => l.LaneNumber == 0 ? 10 : l.LaneNumber)
-                .ToList();
-
-            if (activeLanes.Count == 0)
+            if (isOws)
             {
-                // If all are OFF, show all 10 lanes ordered by lane number (1 to 9, then 0)
-                activeLanes = heat.Lanes.OrderBy(l => l.LaneNumber == 0 ? 10 : l.LaneNumber).ToList();
-            }
+                // Columns Header for OWS: RK  BIB NAME            TIME (32 chars)
+                sb.AppendLine("RK  BIB NAME            TIME");
+                sb.AppendLine("--------------------------------");
 
-            foreach (var lane in activeLanes)
-            {
-                string ln = lane.LaneNumber.ToString().PadLeft(2);
-                
-                string name = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"LANE {lane.LaneNumber}" : lane.SwimmerName.Trim();
-                if (name.Length > 17) name = name.Substring(0, 17);
-                name = name.PadRight(17);
+                var finishedLanes = heat.Lanes
+                    .Where(l => l.Status == LaneStatus.Finished && l.FinishTime.HasValue)
+                    .OrderBy(l => l.Rank ?? 999)
+                    .ThenBy(l => l.FinishTime)
+                    .ToList();
 
-                string timeStr = lane.Status switch
+                var nonFinishedLanes = heat.Lanes
+                    .Where(l => l.Status != LaneStatus.Finished && l.Status != LaneStatus.OFF && l.Status != LaneStatus.Empty)
+                    .OrderBy(l => l.Status)
+                    .ToList();
+
+                var allOwsLanes = finishedLanes.Concat(nonFinishedLanes).ToList();
+                if (allOwsLanes.Count == 0)
                 {
-                    LaneStatus.Finished => lane.FormattedTime,
-                    LaneStatus.DQ => "DQ",
-                    LaneStatus.DNS => "DNS",
-                    LaneStatus.DNF => "DNF",
-                    LaneStatus.OFF => "OFF",
-                    _ => lane.FormattedTime
-                };
+                    allOwsLanes = heat.Lanes.Where(l => !string.IsNullOrWhiteSpace(l.SwimmerName) || l.Status != LaneStatus.OFF).ToList();
+                }
 
-                if (timeStr.Length > 8) timeStr = timeStr.Substring(0, 8);
-                timeStr = timeStr.PadLeft(8);
+                foreach (var lane in allOwsLanes)
+                {
+                    string rk = (lane.Rank.HasValue && lane.Status == LaneStatus.Finished)
+                        ? lane.Rank.Value.ToString().PadLeft(2)
+                        : " -";
+                    if (rk.Length > 2) rk = rk.Substring(0, 2);
 
-                string rk = (lane.Rank.HasValue && lane.Status == LaneStatus.Finished)
-                    ? lane.Rank.Value.ToString().PadLeft(2)
-                    : " -";
-                if (rk.Length > 2) rk = rk.Substring(0, 2);
-                rk = rk.PadLeft(2);
+                    string bib = (!string.IsNullOrWhiteSpace(lane.BibNumber) ? lane.BibNumber : lane.LaneNumber.ToString());
+                    if (bib.Length > 4) bib = bib.Substring(0, 4);
+                    bib = bib.PadLeft(4);
 
-                sb.AppendLine($"{ln} {name} {timeStr} {rk}");
+                    string name = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"Swimmer {bib.Trim()}" : lane.SwimmerName.Trim();
+                    if (name.Length > 15) name = name.Substring(0, 15);
+                    name = name.PadRight(15);
+
+                    string timeStr = lane.Status switch
+                    {
+                        LaneStatus.Finished => lane.FormattedTime,
+                        LaneStatus.DQ => "DQ",
+                        LaneStatus.DNS => "DNS",
+                        LaneStatus.DNF => "DNF",
+                        LaneStatus.OFF => "OFF",
+                        _ => lane.FormattedTime
+                    };
+                    if (timeStr.Length > 8) timeStr = timeStr.Substring(0, 8);
+                    timeStr = timeStr.PadLeft(8);
+
+                    sb.AppendLine($"{rk} {bib} {name} {timeStr}");
+                }
+
+                sb.AppendLine("--------------------------------");
+                sb.AppendLine($"Total Participants: {allOwsLanes.Count}");
+                sb.AppendLine($"Total Finished    : {finishedLanes.Count}");
+            }
+            else
+            {
+                // Columns Header for Pool: LN NAME                  TIME RK
+                // Format: " 1 BUDI SANTOSO      00.27.45  1"
+                sb.AppendLine("LN NAME                  TIME RK");
+                sb.AppendLine("--------------------------------");
+
+                var activeLanes = heat.Lanes
+                    .Where(l => l.Status != LaneStatus.OFF || !string.IsNullOrWhiteSpace(l.SwimmerName))
+                    .OrderBy(l => l.LaneNumber == 0 ? 10 : l.LaneNumber)
+                    .ToList();
+
+                if (activeLanes.Count == 0)
+                {
+                    activeLanes = heat.Lanes.OrderBy(l => l.LaneNumber == 0 ? 10 : l.LaneNumber).ToList();
+                }
+
+                foreach (var lane in activeLanes)
+                {
+                    string ln = lane.LaneNumber.ToString().PadLeft(2);
+                    
+                    string name = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"LANE {lane.LaneNumber}" : lane.SwimmerName.Trim();
+                    if (name.Length > 17) name = name.Substring(0, 17);
+                    name = name.PadRight(17);
+
+                    string timeStr = lane.Status switch
+                    {
+                        LaneStatus.Finished => lane.FormattedTime,
+                        LaneStatus.DQ => "DQ",
+                        LaneStatus.DNS => "DNS",
+                        LaneStatus.DNF => "DNF",
+                        LaneStatus.OFF => "OFF",
+                        _ => lane.FormattedTime
+                    };
+
+                    if (timeStr.Length > 8) timeStr = timeStr.Substring(0, 8);
+                    timeStr = timeStr.PadLeft(8);
+
+                    string rk = (lane.Rank.HasValue && lane.Status == LaneStatus.Finished)
+                        ? lane.Rank.Value.ToString().PadLeft(2)
+                        : " -";
+                    if (rk.Length > 2) rk = rk.Substring(0, 2);
+                    rk = rk.PadLeft(2);
+
+                    sb.AppendLine($"{ln} {name} {timeStr} {rk}");
+                }
+
+                sb.AppendLine("--------------------------------");
+                sb.AppendLine($"Total Swimmers: {activeLanes.Count(l => l.Status != LaneStatus.OFF)}");
             }
 
-            sb.AppendLine("--------------------------------");
-            sb.AppendLine($"Total Swimmers: {activeLanes.Count(l => l.Status != LaneStatus.OFF)}");
             sb.AppendLine();
             sb.AppendLine("Chief Referee:");
             sb.AppendLine();
@@ -166,10 +238,12 @@ namespace boston_timing_system.Services
         /// <summary>
         /// Creates a WPF Visual (Border element) formatted precisely for 58mm thermal paper width (~190-200 DIPs).
         /// High contrast pure black on pure white for thermal print heads.
+        /// Supports both Pool Swimming and Open Water Swimming (OWS) receipt layouts.
         /// </summary>
-        public FrameworkElement CreateReceiptVisual(CompetitionMeetModel meet, HeatModel heat)
+        public FrameworkElement CreateReceiptVisual(CompetitionMeetModel meet, HeatModel heat, TimingMode timingMode = TimingMode.Pool)
         {
             heat.CalculateRanks();
+            bool isOws = timingMode == TimingMode.OpenWater;
 
             var container = new Border
             {
@@ -187,7 +261,7 @@ namespace boston_timing_system.Services
             };
             container.Child = stack;
 
-            // 1. Logo at top center (Matches Reference Image)
+            // 1. Logo at top center (Decoded at 200px and cached to prevent high VRAM allocation)
             var logoSource = LoadLogo();
             if (logoSource != null)
             {
@@ -217,8 +291,9 @@ namespace boston_timing_system.Services
                 });
             }
 
-            // 2. Meet Name (Bold, uppercase, centered, wrapped - Matches Reference Image)
-            string meetTitle = string.IsNullOrWhiteSpace(meet.MeetName) ? "SWIMMING CHAMPIONSHIP" : meet.MeetName.ToUpperInvariant();
+            // 2. Meet Name
+            string defaultTitle = isOws ? "OPEN WATER SWIMMING" : "SWIMMING CHAMPIONSHIP";
+            string meetTitle = string.IsNullOrWhiteSpace(meet.MeetName) ? defaultTitle : meet.MeetName.ToUpperInvariant();
             stack.Children.Add(new TextBlock
             {
                 Text = meetTitle,
@@ -231,7 +306,7 @@ namespace boston_timing_system.Services
                 Margin = new Thickness(0, 2, 0, 4)
             });
 
-            // 3. Meet Date (e.g. "10 SEPTEMBER 2026" - Matches Reference Image)
+            // 3. Meet Date
             string dateStr = meet.MeetDate.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("id-ID")).ToUpperInvariant();
             stack.Children.Add(new TextBlock
             {
@@ -244,10 +319,7 @@ namespace boston_timing_system.Services
                 Margin = new Thickness(0, 0, 0, 8)
             });
 
-            // 4. Event & Heat 3-Column Block (Matches Reference Image)
-            // Left Column: EVENT / {EventNumber}
-            // Center Column: {EventName}
-            // Right Column: HEAT / {HeatNumber}
+            // 4. Event & Heat 3-Column Block
             var eventHeatGrid = new Grid { Margin = new Thickness(0, 4, 0, 6) };
             eventHeatGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) }); // EVENT
             eventHeatGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // EVENT NAME
@@ -282,7 +354,7 @@ namespace boston_timing_system.Services
             Grid.SetColumn(eventPanel, 0);
             eventHeatGrid.Children.Add(eventPanel);
 
-            // Center: EVENT NAME (e.g. "50M GAYA BEBAS PUTRI")
+            // Center: EVENT NAME
             string eventName = string.IsNullOrWhiteSpace(heat.EventName) ? "EVENT" : heat.EventName.ToUpperInvariant();
             var eventNameBlock = new TextBlock
             {
@@ -331,75 +403,155 @@ namespace boston_timing_system.Services
             stack.Children.Add(eventHeatGrid);
             stack.Children.Add(CreateDivider(false));
 
-            // Table Header: LN | NAME | TIME | RK
-            var tableHeader = new Grid { Margin = new Thickness(0, 2, 0, 3) };
-            tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) }); // LN
-            tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // NAME
-            tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) }); // TIME
-            tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) }); // RK
-
-            AddGridCell(tableHeader, "LN", 0, 0, FontWeights.Bold, TextAlignment.Center, 8.5);
-            AddGridCell(tableHeader, "NAME", 0, 1, FontWeights.Bold, TextAlignment.Left, 8.5);
-            AddGridCell(tableHeader, "TIME", 0, 2, FontWeights.Bold, TextAlignment.Right, 8.5);
-            AddGridCell(tableHeader, "RK", 0, 3, FontWeights.Bold, TextAlignment.Center, 8.5);
-
-            stack.Children.Add(tableHeader);
-            stack.Children.Add(CreateDivider(false));
-
-            // Lane Rows ordered by LaneNumber (penalized swimmers remain in their lane order)
-            var activeLanes = heat.Lanes
-                .Where(l => l.Status != LaneStatus.OFF || !string.IsNullOrWhiteSpace(l.SwimmerName))
-                .OrderBy(l => l.LaneNumber == 0 ? 10 : l.LaneNumber)
-                .ToList();
-
-            if (activeLanes.Count == 0)
+            if (isOws)
             {
-                activeLanes = heat.Lanes.OrderBy(l => l.LaneNumber == 0 ? 10 : l.LaneNumber).ToList();
-            }
+                // Table Header OWS: RK | BIB | NAME | TIME
+                var tableHeader = new Grid { Margin = new Thickness(0, 2, 0, 3) };
+                tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) }); // RK
+                tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) }); // BIB
+                tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // NAME
+                tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) }); // TIME
 
-            foreach (var lane in activeLanes)
-            {
-                var rowGrid = new Grid { Margin = new Thickness(0, 1.5, 0, 1.5) };
-                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) }); // LN
-                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // NAME
-                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) }); // TIME
-                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) }); // RK
+                AddGridCell(tableHeader, "RK", 0, 0, FontWeights.Bold, TextAlignment.Center, 8.5);
+                AddGridCell(tableHeader, "BIB", 0, 1, FontWeights.Bold, TextAlignment.Center, 8.5);
+                AddGridCell(tableHeader, "NAME", 0, 2, FontWeights.Bold, TextAlignment.Left, 8.5);
+                AddGridCell(tableHeader, "TIME", 0, 3, FontWeights.Bold, TextAlignment.Right, 8.5);
 
-                string lnText = lane.LaneNumber.ToString();
-                string nameText = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"Lane {lane.LaneNumber}" : lane.SwimmerName;
+                stack.Children.Add(tableHeader);
+                stack.Children.Add(CreateDivider(false));
 
-                string timeText = lane.Status switch
+                var finishedLanes = heat.Lanes
+                    .Where(l => l.Status == LaneStatus.Finished && l.FinishTime.HasValue)
+                    .OrderBy(l => l.Rank ?? 999)
+                    .ThenBy(l => l.FinishTime)
+                    .ToList();
+
+                var nonFinishedLanes = heat.Lanes
+                    .Where(l => l.Status != LaneStatus.Finished && l.Status != LaneStatus.OFF && l.Status != LaneStatus.Empty)
+                    .OrderBy(l => l.Status)
+                    .ToList();
+
+                var allOwsLanes = finishedLanes.Concat(nonFinishedLanes).ToList();
+                if (allOwsLanes.Count == 0)
                 {
-                    LaneStatus.Finished => lane.FormattedTime,
-                    LaneStatus.DQ => "DQ",
-                    LaneStatus.DNS => "DNS",
-                    LaneStatus.DNF => "DNF",
-                    LaneStatus.OFF => "OFF",
-                    _ => lane.FormattedTime
-                };
+                    allOwsLanes = heat.Lanes.Where(l => !string.IsNullOrWhiteSpace(l.SwimmerName) || l.Status != LaneStatus.OFF).ToList();
+                }
 
-                string rkText = (lane.Rank.HasValue && lane.Status == LaneStatus.Finished)
-                    ? lane.Rank.Value.ToString()
-                    : "-";
+                foreach (var lane in allOwsLanes)
+                {
+                    var rowGrid = new Grid { Margin = new Thickness(0, 1.5, 0, 1.5) };
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) }); // RK
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) }); // BIB
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // NAME
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) }); // TIME
 
-                AddGridCell(rowGrid, lnText, 0, 0, FontWeights.SemiBold, TextAlignment.Center, 8.5);
-                AddGridCell(rowGrid, nameText, 0, 1, FontWeights.Normal, TextAlignment.Left, 8.5, true);
-                AddGridCell(rowGrid, timeText, 0, 2, FontWeights.Bold, TextAlignment.Right, 8.5);
-                AddGridCell(rowGrid, rkText, 0, 3, FontWeights.SemiBold, TextAlignment.Center, 8.5);
+                    string rkText = (lane.Rank.HasValue && lane.Status == LaneStatus.Finished)
+                        ? lane.Rank.Value.ToString()
+                        : "-";
 
-                stack.Children.Add(rowGrid);
+                    string bibText = !string.IsNullOrWhiteSpace(lane.BibNumber) ? lane.BibNumber : lane.LaneNumber.ToString();
+                    string nameText = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"Athlete {bibText}" : lane.SwimmerName;
+
+                    string timeText = lane.Status switch
+                    {
+                        LaneStatus.Finished => lane.FormattedTime,
+                        LaneStatus.DQ => "DQ",
+                        LaneStatus.DNS => "DNS",
+                        LaneStatus.DNF => "DNF",
+                        LaneStatus.OFF => "OFF",
+                        _ => lane.FormattedTime
+                    };
+
+                    AddGridCell(rowGrid, rkText, 0, 0, FontWeights.SemiBold, TextAlignment.Center, 8.5);
+                    AddGridCell(rowGrid, bibText, 0, 1, FontWeights.Bold, TextAlignment.Center, 8.5);
+                    AddGridCell(rowGrid, nameText, 0, 2, FontWeights.Normal, TextAlignment.Left, 8.5, true);
+                    AddGridCell(rowGrid, timeText, 0, 3, FontWeights.Bold, TextAlignment.Right, 8.5);
+
+                    stack.Children.Add(rowGrid);
+                }
+
+                stack.Children.Add(CreateDivider(false));
+
+                // Summary
+                var summaryGrid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                AddGridCell(summaryGrid, $"Total: {allOwsLanes.Count}", 0, 0, FontWeights.Normal, TextAlignment.Left, 8.0);
+                AddGridCell(summaryGrid, $"Finish: {finishedLanes.Count}", 0, 1, FontWeights.Normal, TextAlignment.Right, 8.0);
+                stack.Children.Add(summaryGrid);
             }
+            else
+            {
+                // Table Header Pool: LN | NAME | TIME | RK
+                var tableHeader = new Grid { Margin = new Thickness(0, 2, 0, 3) };
+                tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) }); // LN
+                tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // NAME
+                tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) }); // TIME
+                tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) }); // RK
 
-            stack.Children.Add(CreateDivider(false));
+                AddGridCell(tableHeader, "LN", 0, 0, FontWeights.Bold, TextAlignment.Center, 8.5);
+                AddGridCell(tableHeader, "NAME", 0, 1, FontWeights.Bold, TextAlignment.Left, 8.5);
+                AddGridCell(tableHeader, "TIME", 0, 2, FontWeights.Bold, TextAlignment.Right, 8.5);
+                AddGridCell(tableHeader, "RK", 0, 3, FontWeights.Bold, TextAlignment.Center, 8.5);
 
-            // Summary
-            int totalFinished = activeLanes.Count(l => l.Status == LaneStatus.Finished);
-            var summaryGrid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
-            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            AddGridCell(summaryGrid, $"Total: {activeLanes.Count}", 0, 0, FontWeights.Normal, TextAlignment.Left, 8.0);
-            AddGridCell(summaryGrid, $"Finish: {totalFinished}", 0, 1, FontWeights.Normal, TextAlignment.Right, 8.0);
-            stack.Children.Add(summaryGrid);
+                stack.Children.Add(tableHeader);
+                stack.Children.Add(CreateDivider(false));
+
+                // Lane Rows ordered by LaneNumber (penalized swimmers remain in their lane order)
+                var activeLanes = heat.Lanes
+                    .Where(l => l.Status != LaneStatus.OFF || !string.IsNullOrWhiteSpace(l.SwimmerName))
+                    .OrderBy(l => l.LaneNumber == 0 ? 10 : l.LaneNumber)
+                    .ToList();
+
+                if (activeLanes.Count == 0)
+                {
+                    activeLanes = heat.Lanes.OrderBy(l => l.LaneNumber == 0 ? 10 : l.LaneNumber).ToList();
+                }
+
+                foreach (var lane in activeLanes)
+                {
+                    var rowGrid = new Grid { Margin = new Thickness(0, 1.5, 0, 1.5) };
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) }); // LN
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // NAME
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) }); // TIME
+                    rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) }); // RK
+
+                    string lnText = lane.LaneNumber.ToString();
+                    string nameText = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"Lane {lane.LaneNumber}" : lane.SwimmerName;
+
+                    string timeText = lane.Status switch
+                    {
+                        LaneStatus.Finished => lane.FormattedTime,
+                        LaneStatus.DQ => "DQ",
+                        LaneStatus.DNS => "DNS",
+                        LaneStatus.DNF => "DNF",
+                        LaneStatus.OFF => "OFF",
+                        _ => lane.FormattedTime
+                    };
+
+                    string rkText = (lane.Rank.HasValue && lane.Status == LaneStatus.Finished)
+                        ? lane.Rank.Value.ToString()
+                        : "-";
+
+                    AddGridCell(rowGrid, lnText, 0, 0, FontWeights.SemiBold, TextAlignment.Center, 8.5);
+                    AddGridCell(rowGrid, nameText, 0, 1, FontWeights.Normal, TextAlignment.Left, 8.5, true);
+                    AddGridCell(rowGrid, timeText, 0, 2, FontWeights.Bold, TextAlignment.Right, 8.5);
+                    AddGridCell(rowGrid, rkText, 0, 3, FontWeights.SemiBold, TextAlignment.Center, 8.5);
+
+                    stack.Children.Add(rowGrid);
+                }
+
+                stack.Children.Add(CreateDivider(false));
+
+                // Summary
+                int totalFinished = activeLanes.Count(l => l.Status == LaneStatus.Finished);
+                var summaryGrid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                summaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                AddGridCell(summaryGrid, $"Total: {activeLanes.Count}", 0, 0, FontWeights.Normal, TextAlignment.Left, 8.0);
+                AddGridCell(summaryGrid, $"Finish: {totalFinished}", 0, 1, FontWeights.Normal, TextAlignment.Right, 8.0);
+                stack.Children.Add(summaryGrid);
+            }
 
             // Footer info
             stack.Children.Add(new TextBlock
@@ -436,8 +588,8 @@ namespace boston_timing_system.Services
 
                 if (!string.IsNullOrWhiteSpace(printerName))
                 {
-                    var printServer = new LocalPrintServer();
-                    var queue = printServer.GetPrintQueue(printerName);
+                    using var printServer = new LocalPrintServer();
+                    using var queue = printServer.GetPrintQueue(printerName);
                     if (queue != null)
                     {
                         printDialog.PrintQueue = queue;
@@ -460,43 +612,65 @@ namespace boston_timing_system.Services
 
         private static ImageSource? LoadLogo()
         {
-            try
+            if (_cachedLogo != null)
             {
-                if (Application.Current != null)
-                {
-                    var packUri = new Uri("pack://application:,,,/Assets/logo-boston-new.png", UriKind.Absolute);
-                    var bmp = new BitmapImage(packUri);
-                    return bmp;
-                }
+                return _cachedLogo;
             }
-            catch { }
 
-            try
+            lock (_logoLock)
             {
-                string[] candidates = {
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "logo-boston-new.png"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "Assets", "logo-boston-new.png"),
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Assets", "logo-boston-new.png"),
-                    @"d:\coding\boston-timing-system\boston-timing-system\boston-timing-system\Assets\logo-boston-new.png"
-                };
-
-                foreach (var path in candidates)
+                if (_cachedLogo != null)
                 {
-                    if (File.Exists(path))
+                    return _cachedLogo;
+                }
+
+                try
+                {
+                    if (Application.Current != null)
                     {
+                        var packUri = new Uri("pack://application:,,,/Assets/logo-boston-new.png", UriKind.Absolute);
                         var bmp = new BitmapImage();
                         bmp.BeginInit();
+                        bmp.UriSource = packUri;
+                        bmp.DecodePixelWidth = 200; // Downscale to 200px (exact 58mm width) to save 200+ MB VRAM
                         bmp.CacheOption = BitmapCacheOption.OnLoad;
-                        bmp.UriSource = new Uri(Path.GetFullPath(path), UriKind.Absolute);
                         bmp.EndInit();
                         bmp.Freeze();
-                        return bmp;
+                        _cachedLogo = bmp;
+                        return _cachedLogo;
                     }
                 }
-            }
-            catch { }
+                catch { }
 
-            return null;
+                try
+                {
+                    string[] candidates = {
+                        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "logo-boston-new.png"),
+                        Path.Combine(Directory.GetCurrentDirectory(), "Assets", "logo-boston-new.png"),
+                        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Assets", "logo-boston-new.png"),
+                        @"d:\coding\boston-timing-system\boston-timing-system\boston-timing-system\Assets\logo-boston-new.png"
+                    };
+
+                    foreach (var path in candidates)
+                    {
+                        if (File.Exists(path))
+                        {
+                            var bmp = new BitmapImage();
+                            bmp.BeginInit();
+                            bmp.CacheOption = BitmapCacheOption.OnLoad;
+                            bmp.DecodePixelWidth = 200;
+                            bmp.UriSource = new Uri(Path.GetFullPath(path), UriKind.Absolute);
+                            bmp.EndInit();
+                            bmp.Freeze();
+                            _cachedLogo = bmp;
+                            return _cachedLogo;
+                        }
+                    }
+                }
+                catch { }
+
+                return null;
+            }
         }
 
         private static Border CreateDivider(bool isDouble)

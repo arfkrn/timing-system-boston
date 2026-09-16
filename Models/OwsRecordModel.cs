@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using boston_timing_system.Helpers;
 
 namespace boston_timing_system.Models
@@ -35,10 +36,13 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public string RankDisplay => (Status == LaneStatus.Finished && Rank > 0) ? Rank.ToString() : "—";
 
+        [JsonIgnore]
         public bool HasBib => !string.IsNullOrWhiteSpace(BibNumber);
 
+        [JsonIgnore]
         public string StatusToolTip => HasBib
             ? "Pilih status peserta (Finished, DQ, DNS, DNF)"
             : "Status hanya dapat diubah setelah nomor BIB diisi";
@@ -117,10 +121,13 @@ namespace boston_timing_system.Models
             }
         }
 
+        [JsonIgnore]
         public string StatusDisplay => Status.ToString();
 
+        [JsonIgnore]
         public Action<OwsRecordModel, LaneStatus>? StatusChangedCallback { get; set; }
 
+        [JsonIgnore]
         public string StatusOverride
         {
             get

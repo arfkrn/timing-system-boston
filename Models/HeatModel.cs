@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.Json.Serialization;
 using boston_timing_system.Helpers;
 
 namespace boston_timing_system.Models
@@ -42,15 +43,26 @@ namespace boston_timing_system.Models
             set => SetProperty(ref _isCompleted, value);
         }
 
+        [JsonIgnore]
         public bool HasResults => Lanes.Any(l => 
-            (l.Status == LaneStatus.Finished && (l.FinishTime.HasValue || (!string.IsNullOrEmpty(l.FormattedTime) && l.FormattedTime != "00.00.00"))) ||
+            l.FinishTime.HasValue ||
+            (l.Status == LaneStatus.Finished && (!string.IsNullOrEmpty(l.FormattedTime) && l.FormattedTime != "00.00.00")) ||
             l.Status == LaneStatus.DQ || 
             l.Status == LaneStatus.DNF ||
             l.Status == LaneStatus.DNS);
 
         public ObservableCollection<LaneModel> Lanes { get; set; } = new();
 
+        [JsonIgnore]
         public string DisplayTitle => $"Heat {HeatNumber}";
+
+        /// <summary>
+        /// Parameterless constructor for JSON deserialization to prevent duplicate default lanes.
+        /// </summary>
+        [JsonConstructor]
+        public HeatModel()
+        {
+        }
 
         public HeatModel(int heatNumber = 1, int eventNumber = 1, string eventName = "")
         {

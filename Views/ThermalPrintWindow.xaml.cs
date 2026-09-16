@@ -14,20 +14,27 @@ namespace boston_timing_system.Views
         private readonly CompetitionMeetModel _meet;
         private readonly HeatModel _heat;
         private readonly ThermalPrintService _printService;
+        private readonly TimingMode _timingMode;
         private FrameworkElement? _receiptVisual;
         private string? _receiptText;
 
         public bool PrintSuccessful { get; private set; }
 
-        public ThermalPrintWindow(CompetitionMeetModel meet, HeatModel heat, ThermalPrintService printService)
+        public ThermalPrintWindow(CompetitionMeetModel meet, HeatModel heat, ThermalPrintService printService, TimingMode timingMode = TimingMode.Pool)
         {
             InitializeComponent();
 
             _meet = meet ?? throw new ArgumentNullException(nameof(meet));
             _heat = heat ?? throw new ArgumentNullException(nameof(heat));
             _printService = printService ?? throw new ArgumentNullException(nameof(printService));
+            _timingMode = timingMode;
 
             Loaded += ThermalPrintWindow_Loaded;
+            Closed += (s, e) =>
+            {
+                bdReceiptContainer.Child = null;
+                _receiptVisual = null;
+            };
         }
 
         private void ThermalPrintWindow_Loaded(object sender, RoutedEventArgs e)
@@ -36,12 +43,18 @@ namespace boston_timing_system.Views
             txtInfoMeet.Text = _meet.MeetName;
             txtInfoEventHeat.Text = $"Event #{_heat.EventNumber} ({_heat.EventName}) - Heat #{_heat.HeatNumber}";
 
+            // Update badge text if OWS
+            if (_timingMode == TimingMode.OpenWater && txtFormatBadge != null)
+            {
+                txtFormatBadge.Text = "FORMAT: 58MM OWS ROLL";
+            }
+
             // Generate receipt preview visual
-            _receiptVisual = _printService.CreateReceiptVisual(_meet, _heat);
+            _receiptVisual = _printService.CreateReceiptVisual(_meet, _heat, _timingMode);
             bdReceiptContainer.Child = _receiptVisual;
 
             // Generate monospace text version
-            _receiptText = _printService.GenerateReceiptText(_meet, _heat);
+            _receiptText = _printService.GenerateReceiptText(_meet, _heat, _timingMode);
 
             // Populate installed printers
             LoadPrinters();
@@ -111,7 +124,7 @@ namespace boston_timing_system.Views
                 }
 
                 // Create fresh visual specifically for printing to avoid visual tree re-parenting issues
-                var printVisual = _printService.CreateReceiptVisual(_meet, _heat);
+                var printVisual = _printService.CreateReceiptVisual(_meet, _heat, _timingMode);
                 var result = _printService.PrintVisualToPrinter(printVisual, selectedPrinter);
 
                 if (result.Success)
