@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Cetak Hasil Balapan - Thermal 58mm" 
+        Title="Print Out Race Results" 
         Height="760" Width="740"
         MinHeight="620" MinWidth="680"
         Background="#F8FAFC"

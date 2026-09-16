@@ -59,6 +59,7 @@ namespace boston_timing_system.Helpers
             {
                 return statusStr switch
                 {
+                    "Finished" => GreenBrush,
                     "DQ" => DarkRedBrush,
                     "DNS" => DarkAmberBrush,
                     "DNF" => RedBrush,

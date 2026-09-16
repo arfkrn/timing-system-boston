@@ -82,6 +82,28 @@ namespace boston_timing_system.Services
         public bool IsOwsRefereeConnected => _clients.Values.Any(c => c.Role == ClientRole.Referee);
         public double OwsRefereeLatencyMs => _clients.Values.FirstOrDefault(c => c.Role == ClientRole.Referee)?.OneWayLatencyMs ?? 0.0;
 
+        /// <summary>Average one-way latency (ms) across all connected Starter devices. Returns 0 if none connected.</summary>
+        public double StarterLatencyMs
+        {
+            get
+            {
+                var starters = _clients.Values.Where(c => c.Role == ClientRole.Starter && c.OneWayLatencyMs > 0).ToList();
+                return starters.Count > 0 ? starters.Average(c => c.OneWayLatencyMs) : 0.0;
+            }
+        }
+
+        /// <summary>Average one-way latency (ms) across all connected Chief/Referee devices. Returns 0 if none connected.</summary>
+        public double ChiefLatencyMs
+        {
+            get
+            {
+                var chiefs = _clients.Values
+                    .Where(c => (c.Role == ClientRole.Chief || c.Role == ClientRole.Referee) && c.OneWayLatencyMs > 0)
+                    .ToList();
+                return chiefs.Count > 0 ? chiefs.Average(c => c.OneWayLatencyMs) : 0.0;
+            }
+        }
+
         private string _accessCode = string.Empty;
         public string AccessCode
         {
@@ -114,6 +136,8 @@ namespace boston_timing_system.Services
         }
 
         public event Action<string>? LogReceived;
+        /// <summary>Fired every time a PING/latency measurement is received from any client.</summary>
+        public event Action? LatencyUpdated;
 
         private readonly int[] _candidatePorts;
 
@@ -138,6 +162,7 @@ namespace boston_timing_system.Services
             _engine.Tick += HandleEngineTick;
             _engine.ModeChanged += HandleEngineModeChanged;
             _engine.OwsFinishRecorded += HandleEngineOwsFinishRecorded;
+            _engine.OwsRecordStatusChanged += HandleEngineOwsRecordStatusChanged;
         }
 
         /// <summary>
@@ -361,6 +386,7 @@ namespace boston_timing_system.Services
                         if (command.EstimatedLatencyMs.HasValue)
                         {
                             client.RecordLatencyMeasurement(command.EstimatedLatencyMs.Value);
+                            LatencyUpdated?.Invoke(); // notify UI to refresh latency labels
                         }
 
                         if (client.Role == ClientRole.Referee && client.AssignedLane.HasValue)
@@ -384,6 +410,203 @@ namespace boston_timing_system.Services
                     case "REGISTER":
                         Log($"Command '{actionUpper}' from {client.IpAddress} ({command.Role ?? "Unknown"})");
                         HandleRegisterCommand(client, command);
+                        break;
+
+                    case "UPDATE_OWS_BIB":
+                    case "UPDATE_OWS_RECORD":
+                        if (_engine.CurrentMode == TimingMode.OpenWater)
+                        {
+                            OwsRecordModel? rec = null;
+                            if (!string.IsNullOrWhiteSpace(command.Id))
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.Id == command.Id);
+                            }
+                            if (rec == null && command.Rank.HasValue && command.Rank.Value > 0)
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.Rank == command.Rank.Value);
+                            }
+                            if (rec == null && !string.IsNullOrWhiteSpace(command.PreviousBibNumber))
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.BibNumber.Equals(command.PreviousBibNumber, StringComparison.OrdinalIgnoreCase));
+                            }
+                            if (rec == null && !string.IsNullOrWhiteSpace(command.SwimmerName))
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.SwimmerName.Equals(command.SwimmerName, StringComparison.OrdinalIgnoreCase));
+                            }
+                            if (rec == null && !string.IsNullOrWhiteSpace(command.FormattedTime))
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.FormattedTime == command.FormattedTime);
+                            }
+                            if (rec == null && command.Rank.HasValue)
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.Rank == command.Rank.Value);
+                            }
+                            if (rec != null)
+                            {
+                                string newBib = command.BibNumber?.Trim() ?? string.Empty;
+
+                                // KASUS 1: Client mengirim BIB kosong -> Reset / Hapus BIB pada Rank tersebut
+                                if (string.IsNullOrWhiteSpace(newBib))
+                                {
+                                    rec.BibNumber = string.Empty;
+                                    rec.SwimmerName = string.Empty;
+                                    rec.Club = string.Empty;
+                                    rec.Status = LaneStatus.Finished;
+
+                                    if (_engine.CurrentHeat != null)
+                                    {
+                                        var prevLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l => l.Rank == rec.Rank);
+                                        if (prevLane != null)
+                                        {
+                                            prevLane.Status = _engine.Status == RaceStatus.Running ? LaneStatus.Running : LaneStatus.Ready;
+                                            prevLane.FinishTime = null;
+                                            prevLane.FormattedTime = "00.00.00";
+                                            prevLane.Rank = null;
+
+                                            var prevEngLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == prevLane.LaneNumber);
+                                            if (prevEngLane != null)
+                                            {
+                                                prevEngLane.Status = prevLane.Status;
+                                                prevEngLane.FinishTime = null;
+                                                prevEngLane.FormattedTime = "00.00.00";
+                                                prevEngLane.Rank = null;
+                                            }
+                                        }
+                                    }
+
+                                    Broadcast(CreateStateSyncEvent());
+                                    Log($"[OWS RESET BIB] Cleared BIB for Rank #{rec.Rank} by {client.Role} ({client.IpAddress})");
+                                    break;
+                                }
+
+                                // KASUS 2: Client mengirim nomor BIB baru -> Update BIB dan sinkronisasi peserta
+                                rec.BibNumber = newBib;
+
+                                if (!string.IsNullOrWhiteSpace(command.Status) && rec.HasBib)
+                                {
+                                    rec.StatusOverride = command.Status;
+                                }
+
+                                var participant = _engine.LookupParticipantByBib(newBib);
+                                if (participant != null)
+                                {
+                                    rec.SwimmerName = participant.SwimmerName ?? string.Empty;
+                                    rec.Club = participant.Club ?? string.Empty;
+                                }
+                                else if (!string.IsNullOrWhiteSpace(command.SwimmerName))
+                                {
+                                    rec.SwimmerName = command.SwimmerName.Trim();
+                                    rec.Club = command.Club?.Trim() ?? string.Empty;
+                                }
+                                else
+                                {
+                                    rec.SwimmerName = string.Empty;
+                                    rec.Club = string.Empty;
+                                }
+
+                                if (_engine.CurrentHeat != null)
+                                {
+                                    // Revert peserta lama jika rank ini sebelumnya terhubung dengan bib berbeda
+                                    var prevLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l =>
+                                        l.Rank == rec.Rank &&
+                                        (l.HasExplicitBibNumber ? !l.BibNumber.Equals(newBib, StringComparison.OrdinalIgnoreCase) : l.LaneNumber.ToString() != newBib));
+                                    if (prevLane != null)
+                                    {
+                                        prevLane.Status = _engine.Status == RaceStatus.Running ? LaneStatus.Running : LaneStatus.Ready;
+                                        prevLane.FinishTime = null;
+                                        prevLane.FormattedTime = "00.00.00";
+                                        prevLane.Rank = null;
+
+                                        var prevEngLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == prevLane.LaneNumber);
+                                        if (prevEngLane != null)
+                                        {
+                                            prevEngLane.Status = prevLane.Status;
+                                            prevEngLane.FinishTime = null;
+                                            prevEngLane.FormattedTime = "00.00.00";
+                                            prevEngLane.Rank = null;
+                                        }
+                                    }
+
+                                    var matchedLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l =>
+                                        l.HasExplicitBibNumber
+                                            ? l.BibNumber.Equals(newBib, StringComparison.OrdinalIgnoreCase)
+                                            : l.LaneNumber.ToString() == newBib);
+                                    if (matchedLane != null)
+                                    {
+                                        matchedLane.Status = rec.Status;
+                                        matchedLane.FinishTime = rec.FinishTime;
+                                        matchedLane.FormattedTime = rec.FormattedTime;
+                                        matchedLane.Rank = rec.Status == LaneStatus.Finished ? rec.Rank : null;
+
+                                        var engLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == matchedLane.LaneNumber);
+                                        if (engLane != null)
+                                        {
+                                            engLane.Status = rec.Status;
+                                            engLane.FinishTime = rec.FinishTime;
+                                            engLane.FormattedTime = rec.FormattedTime;
+                                            engLane.Rank = rec.Status == LaneStatus.Finished ? rec.Rank : null;
+                                        }
+
+                                        if (string.IsNullOrWhiteSpace(rec.SwimmerName) && !string.IsNullOrWhiteSpace(matchedLane.SwimmerName))
+                                        {
+                                            rec.SwimmerName = matchedLane.SwimmerName;
+                                        }
+                                        if (string.IsNullOrWhiteSpace(rec.Club) && !string.IsNullOrWhiteSpace(matchedLane.Club))
+                                        {
+                                            rec.Club = matchedLane.Club;
+                                        }
+                                    }
+                                }
+
+                                Broadcast(CreateStateSyncEvent());
+                                Log($"[OWS UPDATE] Updated Rank #{rec.Rank} with BIB {rec.BibNumber} ({rec.SwimmerName})");
+                            }
+                        }
+                        break;
+
+                    case "DELETE_OWS_RECORD":
+                        if (_engine.CurrentMode == TimingMode.OpenWater)
+                        {
+                            OwsRecordModel? rec = null;
+                            if (!string.IsNullOrWhiteSpace(command.Id))
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.Id == command.Id);
+                            }
+                            if (rec == null && command.Rank.HasValue && command.Rank.Value > 0)
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.Rank == command.Rank.Value);
+                            }
+                            if (rec == null && !string.IsNullOrWhiteSpace(command.BibNumber))
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.BibNumber.Equals(command.BibNumber, StringComparison.OrdinalIgnoreCase));
+                            }
+                            if (rec == null && !string.IsNullOrWhiteSpace(command.SwimmerName))
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.SwimmerName.Equals(command.SwimmerName, StringComparison.OrdinalIgnoreCase));
+                            }
+                            if (rec == null && !string.IsNullOrWhiteSpace(command.FormattedTime))
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.FormattedTime == command.FormattedTime);
+                            }
+                            if (rec == null && command.Rank.HasValue)
+                            {
+                                rec = _engine.OwsRecords.FirstOrDefault(r => r.Rank == command.Rank.Value);
+                            }
+
+                            if (rec != null)
+                            {
+                                int deletedRank = rec.Rank;
+                                string deletedBib = rec.BibNumber;
+                                _engine.RemoveOwsRecord(rec);
+
+                                Broadcast(CreateStateSyncEvent());
+                                Log($"[OWS DELETE] Rank #{deletedRank} (BIB: {deletedBib}, ID: {rec.Id}) deleted by {client.Role} ({client.IpAddress})");
+                            }
+                            else
+                            {
+                                Log($"[OWS DELETE REJECTED] Record not found (Rank: {command.Rank}, ID: {command.Id}).");
+                            }
+                        }
                         break;
 
                     case "START_RACE":
@@ -794,6 +1017,7 @@ namespace boston_timing_system.Services
 
             var owsDtos = _engine.OwsRecords.Select(r => new OwsRecordDto
             {
+                Id = r.Id,
                 Rank = r.Rank,
                 BibNumber = r.BibNumber,
                 SwimmerName = r.SwimmerName,
@@ -905,6 +1129,7 @@ namespace boston_timing_system.Services
                 OwsFinisherCount = _engine.OwsRecords.Count,
                 OwsRecords = _engine.OwsRecords.Select(r => new OwsRecordDto
                 {
+                    Id = r.Id,
                     Rank = r.Rank,
                     BibNumber = r.BibNumber,
                     SwimmerName = r.SwimmerName,
@@ -915,6 +1140,12 @@ namespace boston_timing_system.Services
                 }).ToList(),
                 Message = $"OWS Finish recorded: #{record.Rank} ({record.FormattedTime}) [Bib {record.BibNumber}]"
             });
+        }
+
+        private void HandleEngineOwsRecordStatusChanged(OwsRecordModel record, LaneStatus newStatus)
+        {
+            Broadcast(CreateStateSyncEvent());
+            Log($"[OWS STATUS] Rank #{record.Rank} (BIB {record.BibNumber}) status changed to {newStatus}");
         }
 
         public void Dispose()
@@ -929,6 +1160,7 @@ namespace boston_timing_system.Services
             _engine.Tick -= HandleEngineTick;
             _engine.ModeChanged -= HandleEngineModeChanged;
             _engine.OwsFinishRecorded -= HandleEngineOwsFinishRecorded;
+            _engine.OwsRecordStatusChanged -= HandleEngineOwsRecordStatusChanged;
         }
     }
     public class CachedSession

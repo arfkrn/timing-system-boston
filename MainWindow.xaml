@@ -376,7 +376,7 @@
                             <ColumnDefinition Width="85" />   <!-- TIMER 2 -->
                             <ColumnDefinition Width="85" />   <!-- TIMER 3 -->
                             <ColumnDefinition Width="105" />  <!-- RESULT TIME -->
-                            <ColumnDefinition Width="60" />   <!-- SIGNAL -->
+                            <ColumnDefinition Width="90" />   <!-- SIGNAL / ms -->
                             <ColumnDefinition Width="100" />  <!-- STATUS -->
                             <ColumnDefinition Width="115" />  <!-- OFFICIAL TIME -->
                             <ColumnDefinition Width="54" />   <!-- RANK -->
@@ -433,7 +433,7 @@
 
                         <!-- SIGNAL -->
                         <Border Grid.Column="8" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0">
-                            <TextBlock Text="SIGNAL" FontWeight="Bold" FontSize="12" Foreground="#0F172A"
+                            <TextBlock Text="SIGNAL / ms" FontWeight="Bold" FontSize="12" Foreground="#0F172A"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
 
@@ -513,7 +513,7 @@
                                             <ColumnDefinition Width="85" />   <!-- TIMER 2 -->
                                             <ColumnDefinition Width="85" />   <!-- TIMER 3 -->
                                             <ColumnDefinition Width="105" />  <!-- RESULT TIME -->
-                                            <ColumnDefinition Width="60" />   <!-- SIGNAL -->
+                                            <ColumnDefinition Width="90" />   <!-- SIGNAL -->
                                             <ColumnDefinition Width="100" />  <!-- STATUS -->
                                             <ColumnDefinition Width="115" />  <!-- OFFICIAL TIME -->
                                             <ColumnDefinition Width="54" />   <!-- RANK -->
@@ -533,7 +533,7 @@
                                                                     <Setter Property="Fill" Value="#16A34A" />
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding CanStop}" Value="True">
-                                                                    <Setter Property="Fill" Value="#0284C7" />
+                                                                    <Setter Property="Fill" Value="#16A34A" />
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding IsOff}" Value="True">
                                                                     <Setter Property="Fill" Value="#CBD5E1" />
@@ -627,62 +627,103 @@
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
 
-                                        <!-- 8: SIGNAL (4-bar cellular icon) -->
+                                        <!-- 8: SIGNAL (4-bar) + latency number below -->
                                         <Border Grid.Column="8" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                                                         ToolTip="{Binding RefereeConnectionTooltip}">
-                                                <!-- Bar 1 -->
-                                                <Rectangle Width="3" Height="4" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
-                                                    <Rectangle.Style>
-                                                        <Style TargetType="Rectangle">
-                                                            <Setter Property="Fill" Value="#CBD5E1" />
+                                                <!-- 4-bar icon (same as before) -->
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,2">
+                                                    <!-- Bar 1 -->
+                                                    <Rectangle Width="3" Height="4" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
+                                                        <Rectangle.Style>
+                                                            <Style TargetType="Rectangle">
+                                                                <Setter Property="Fill" Value="#CBD5E1" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                        <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Rectangle.Style>
+                                                    </Rectangle>
+                                                    <!-- Bar 2 -->
+                                                    <Rectangle Width="3" Height="7" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
+                                                        <Rectangle.Style>
+                                                            <Style TargetType="Rectangle">
+                                                                <Setter Property="Fill" Value="#CBD5E1" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                        <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Rectangle.Style>
+                                                    </Rectangle>
+                                                    <!-- Bar 3 -->
+                                                    <Rectangle Width="3" Height="10" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
+                                                        <Rectangle.Style>
+                                                            <Style TargetType="Rectangle">
+                                                                <Setter Property="Fill" Value="#CBD5E1" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                        <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Rectangle.Style>
+                                                    </Rectangle>
+                                                    <!-- Bar 4 -->
+                                                    <Rectangle Width="3" Height="13" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
+                                                        <Rectangle.Style>
+                                                            <Style TargetType="Rectangle">
+                                                                <Setter Property="Fill" Value="#CBD5E1" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                        <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Rectangle.Style>
+                                                    </Rectangle>
+                                                </StackPanel>
+
+                                                <!-- Latency number — color-coded by quality -->
+                                                <TextBlock Text="{Binding FormattedLatency}"
+                                                           FontSize="9.5" FontWeight="SemiBold"
+                                                           HorizontalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <!-- Default: grey when no connection -->
+                                                            <Setter Property="Foreground" Value="#94A3B8" />
                                                             <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
-                                                                    <Setter Property="Fill" Value="#0284C7" />
-                                                                </DataTrigger>
+                                                                <!-- Good latency < 50ms → green -->
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsRefereeConnected}" Value="True" />
+                                                                        <Condition Binding="{Binding IsLatencyGood}" Value="True" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Foreground" Value="#16A34A" />
+                                                                </MultiDataTrigger>
+                                                                <!-- Medium latency 50–150ms → amber -->
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsRefereeConnected}" Value="True" />
+                                                                        <Condition Binding="{Binding IsLatencyMedium}" Value="True" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Foreground" Value="#D97706" />
+                                                                </MultiDataTrigger>
+                                                                <!-- High latency > 150ms → red -->
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsRefereeConnected}" Value="True" />
+                                                                        <Condition Binding="{Binding IsLatencyHigh}" Value="True" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Foreground" Value="#DC2626" />
+                                                                </MultiDataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
-                                                    </Rectangle.Style>
-                                                </Rectangle>
-                                                <!-- Bar 2 -->
-                                                <Rectangle Width="3" Height="7" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
-                                                    <Rectangle.Style>
-                                                        <Style TargetType="Rectangle">
-                                                            <Setter Property="Fill" Value="#CBD5E1" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
-                                                                    <Setter Property="Fill" Value="#0284C7" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Rectangle.Style>
-                                                </Rectangle>
-                                                <!-- Bar 3 -->
-                                                <Rectangle Width="3" Height="10" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
-                                                    <Rectangle.Style>
-                                                        <Style TargetType="Rectangle">
-                                                            <Setter Property="Fill" Value="#CBD5E1" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
-                                                                    <Setter Property="Fill" Value="#0284C7" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Rectangle.Style>
-                                                </Rectangle>
-                                                <!-- Bar 4 -->
-                                                <Rectangle Width="3" Height="13" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
-                                                    <Rectangle.Style>
-                                                        <Style TargetType="Rectangle">
-                                                            <Setter Property="Fill" Value="#CBD5E1" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
-                                                                    <Setter Property="Fill" Value="#0284C7" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Rectangle.Style>
-                                                </Rectangle>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                             </StackPanel>
                                         </Border>
 
@@ -876,7 +917,7 @@
                             <ColumnDefinition Width="2*" />   <!-- TEAM / CLUB -->
                             <ColumnDefinition Width="130" />  <!-- OFFICIAL TIME -->
                             <ColumnDefinition Width="110" />  <!-- GAP (+DIFF) -->
-                            <ColumnDefinition Width="90" />   <!-- STATUS -->
+                            <ColumnDefinition Width="105" />  <!-- STATUS -->
                             <ColumnDefinition Width="60" />   <!-- ACTION -->
                         </Grid.ColumnDefinitions>
 
@@ -937,37 +978,40 @@
                                                 <ColumnDefinition Width="2*" />   <!-- TEAM / CLUB -->
                                                 <ColumnDefinition Width="130" />  <!-- OFFICIAL TIME -->
                                                 <ColumnDefinition Width="110" />  <!-- GAP (+DIFF) -->
-                                                <ColumnDefinition Width="90" />   <!-- STATUS -->
+                                                <ColumnDefinition Width="105" />  <!-- STATUS -->
                                                 <ColumnDefinition Width="60" />   <!-- ACTION -->
                                             </Grid.ColumnDefinitions>
 
                                             <!-- RANK with Medal color badge -->
                                             <Border Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                     Width="28" Height="28" CornerRadius="14" Background="#F1F5F9">
-                                                <TextBlock Text="{Binding Rank}" FontWeight="Bold" FontSize="13" 
+                                                <TextBlock Text="{Binding RankDisplay}" FontWeight="Bold" FontSize="13" 
                                                            Foreground="#0F172A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
 
-                                            <!-- BIB # (Editable in place) -->
-                                            <TextBox Grid.Column="1" Text="{Binding BibNumber, UpdateSourceTrigger=PropertyChanged}" 
+                                            <!-- BIB # (Editable — type BIB, then Tab/click away to auto-fill name & club) -->
+                                            <TextBox Grid.Column="1" 
+                                                     Text="{Binding BibNumber, UpdateSourceTrigger=PropertyChanged}" 
                                                      FontWeight="Bold" FontSize="12" Foreground="#0284C7"
                                                      VerticalAlignment="Center" HorizontalAlignment="Center" 
                                                      BorderThickness="1" BorderBrush="#E2E8F0"
-                                                     Padding="6,3" MinWidth="55" TextAlignment="Center" Background="#F8FAFC"/>
+                                                     Padding="6,3" MinWidth="55" TextAlignment="Center" Background="#F8FAFC"
+                                                     Tag="{Binding}"
+                                                     LostFocus="OwsBibNumber_LostFocus"
+                                                     KeyDown="OwsBibNumber_KeyDown"
+                                                     ToolTip="Masukkan nomor BIB peserta, lalu tekan Enter atau klik di luar kolom ini untuk mengisi nama dan klub secara otomatis."/>
 
-                                            <!-- ATHLETE NAME (Editable in place) -->
-                                            <TextBox Grid.Column="2" Text="{Binding SwimmerName, UpdateSourceTrigger=PropertyChanged}" 
-                                                     FontWeight="SemiBold" FontSize="12" Foreground="#0F172A"
-                                                     VerticalAlignment="Center" Margin="10,0,10,0"
-                                                     BorderThickness="1" BorderBrush="#E2E8F0"
-                                                     Padding="8,3" Background="#F8FAFC"/>
+                                            <!-- ATHLETE NAME (Read-only, auto-filled from BIB) -->
+                                            <TextBlock Grid.Column="2" Text="{Binding SwimmerName}" 
+                                                       FontWeight="SemiBold" FontSize="12.5" Foreground="#0F172A"
+                                                       VerticalAlignment="Center" Margin="10,0,10,0"
+                                                       TextTrimming="CharacterEllipsis"/>
 
-                                            <!-- CLUB (Editable in place) -->
-                                            <TextBox Grid.Column="3" Text="{Binding Club, UpdateSourceTrigger=PropertyChanged}" 
-                                                     FontSize="11.5" Foreground="#475569"
-                                                     VerticalAlignment="Center" Margin="10,0,10,0"
-                                                     BorderThickness="1" BorderBrush="#E2E8F0"
-                                                     Padding="8,3" Background="#F8FAFC"/>
+                                            <!-- CLUB (Read-only, auto-filled from BIB) -->
+                                            <TextBlock Grid.Column="3" Text="{Binding Club}" 
+                                                       FontSize="12" Foreground="#475569"
+                                                       VerticalAlignment="Center" Margin="10,0,10,0"
+                                                       TextTrimming="CharacterEllipsis"/>
 
                                             <!-- OFFICIAL TIME -->
                                             <Border Grid.Column="4" Background="#F0FDF4" BorderBrush="#86EFAC" BorderThickness="1"
@@ -982,10 +1026,31 @@
                                                        FontWeight="SemiBold" FontSize="12" Foreground="#64748B"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                                            <!-- STATUS (Finished) -->
-                                            <Border Grid.Column="6" Background="#EFF6FF" CornerRadius="4" Padding="6,2"
-                                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding StatusDisplay}" FontWeight="Bold" FontSize="11" Foreground="#1D4ED8"/>
+                                            <!-- STATUS (Finished, DQ, DNS, DNF) -->
+                                            <Border Grid.Column="6" Padding="4,0" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                                                <ComboBox SelectedItem="{Binding StatusOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          ItemsSource="{Binding Source={x:Static models:OwsRecordModel.StatusOptions}}"
+                                                          IsEnabled="{Binding HasBib}"
+                                                          ToolTip="{Binding StatusToolTip}"
+                                                          ToolTipService.ShowOnDisabled="True"
+                                                          Height="28"
+                                                          FontSize="11.5"
+                                                          FontWeight="Bold"
+                                                          Cursor="Hand"
+                                                          VerticalContentAlignment="Center"
+                                                          HorizontalContentAlignment="Left"
+                                                          Background="#F8FAFC"
+                                                          BorderBrush="#CBD5E1">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <Ellipse Width="6" Height="6" Margin="2,0,6,0" VerticalAlignment="Center"
+                                                                         Fill="{Binding Converter={StaticResource StatusToBrushConverter}}" />
+                                                                <TextBlock Text="{Binding}" FontWeight="Bold" FontSize="11.5" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
                                             </Border>
 
                                             <!-- ACTION (Delete tap) -->
@@ -1156,27 +1221,36 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />  <!-- Role label -->
+                            <ColumnDefinition Width="Auto" />  <!-- Bars -->
+                            <ColumnDefinition Width="Auto" />  <!-- Latency ms -->
                         </Grid.ColumnDefinitions>
 
-                        <!-- STARTER -->
+                        <!-- STARTER row -->
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="STARTER" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,8,4" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,4">
                             <Rectangle x:Name="barStarter1" Width="2.5" Height="4" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
                             <Rectangle x:Name="barStarter2" Width="2.5" Height="7" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
                             <Rectangle x:Name="barStarter3" Width="2.5" Height="10" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
                             <Rectangle x:Name="barStarter4" Width="2.5" Height="13" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" VerticalAlignment="Bottom"/>
                         </StackPanel>
+                        <TextBlock x:Name="txtStarterLatency" Grid.Row="0" Grid.Column="2"
+                                   Text="--" FontSize="9.5" FontWeight="SemiBold" Foreground="#94A3B8"
+                                   VerticalAlignment="Center" Margin="0,0,0,4"
+                                   ToolTip="One-way estimated latency to Starter device"/>
 
-                        <!-- CHIEF / WASIT FINIS -->
+                        <!-- CHIEF / WASIT FINIS row -->
                         <TextBlock Grid.Row="1" Grid.Column="0" x:Name="txtMobileRole2" Text="CHIEF" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
                             <Rectangle x:Name="barChief1" Width="2.5" Height="4" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
                             <Rectangle x:Name="barChief2" Width="2.5" Height="7" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
                             <Rectangle x:Name="barChief3" Width="2.5" Height="10" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
                             <Rectangle x:Name="barChief4" Width="2.5" Height="13" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" VerticalAlignment="Bottom"/>
                         </StackPanel>
+                        <TextBlock x:Name="txtChiefLatency" Grid.Row="1" Grid.Column="2"
+                                   Text="--" FontSize="9.5" FontWeight="SemiBold" Foreground="#94A3B8"
+                                   VerticalAlignment="Center"
+                                   ToolTip="One-way estimated latency to Chief/Referee device"/>
                     </Grid>
                 </StackPanel>
 

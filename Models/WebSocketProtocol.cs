@@ -57,6 +57,24 @@ namespace boston_timing_system.Models
 
         [JsonPropertyName("swimmerName")]
         public string? SwimmerName { get; set; }
+
+        [JsonPropertyName("club")]
+        public string? Club { get; set; }
+
+        [JsonPropertyName("rank")]
+        public int? Rank { get; set; }
+
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+
+        [JsonPropertyName("previousBibNumber")]
+        public string? PreviousBibNumber { get; set; }
+
+        [JsonPropertyName("formattedTime")]
+        public string? FormattedTime { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
     }
 
     public class ServerEvent
@@ -190,6 +208,9 @@ namespace boston_timing_system.Models
 
     public class OwsRecordDto
     {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = string.Empty;
+
         [JsonPropertyName("rank")]
         public int Rank { get; set; }
 

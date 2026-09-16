@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -63,6 +64,11 @@ namespace boston_timing_system
                 UpdateOwsSummaryUi();
                 AddLogMessage($"[OWS FINISH] #{rec.Rank} {rec.FormattedTime} (Bib {rec.BibNumber} {rec.SwimmerName})");
             });
+            _engine.OwsRecordStatusChanged += (rec, status) => RunOnUi(() =>
+            {
+                UpdateOwsSummaryUi();
+                AddLogMessage($"[OWS STATUS] BIB {rec.BibNumber} ({rec.SwimmerName}) status diubah menjadi {status}.");
+            });
 
             // 2. Initialize WebSocket server with port fallback (tries 8181 → 8182 → 8183 → 8080)
             _wsServer = new TimingWebSocketServer(_engine, candidatePorts: new[] { 8181, 8182, 8183, 8080 });
@@ -105,6 +111,8 @@ namespace boston_timing_system
                     RunOnUi(UpdateMobileConnectIndicators);
                 }
             };
+            // Refresh latency labels every time a PING measurement arrives from a mobile device
+            _wsServer.LatencyUpdated += () => RunOnUi(UpdateMobileConnectIndicators);
             UpdateMobileConnectIndicators();
 
             // 3. Display timer for UI rendering (~30 FPS)
@@ -561,15 +569,17 @@ namespace boston_timing_system
             barStarter2.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
             barStarter3.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
             barStarter4.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
+            UpdateFooterLatencyLabel(txtStarterLatency, hasStarter, _wsServer.StarterLatencyMs);
 
             if (_engine.IsOpenWaterMode)
             {
-                txtMobileRole2.Text = "WASIT FINIS";
+                txtMobileRole2.Text = "OWS REFEREE";
                 bool hasReferee = _wsServer.IsOwsRefereeConnected || _wsServer.RefereesCount > 0;
                 barChief1.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
                 barChief2.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
                 barChief3.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
                 barChief4.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
+                UpdateFooterLatencyLabel(txtChiefLatency, hasReferee, _wsServer.ChiefLatencyMs);
             }
             else
             {
@@ -579,7 +589,31 @@ namespace boston_timing_system
                 barChief2.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
                 barChief3.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
                 barChief4.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
+                UpdateFooterLatencyLabel(txtChiefLatency, hasChief, _wsServer.ChiefLatencyMs);
             }
+        }
+
+        /// <summary>
+        /// Sets the footer latency TextBlock text and foreground color.
+        /// Shows "--" in grey when not connected or no latency data.
+        /// Shows "X.Xms" color-coded: green &lt;50ms, amber 50–150ms, red &gt;150ms.
+        /// </summary>
+        private void UpdateFooterLatencyLabel(System.Windows.Controls.TextBlock label, bool isConnected, double latencyMs)
+        {
+            if (label == null) return;
+
+            if (!isConnected || latencyMs <= 0)
+            {
+                label.Text = "--";
+                label.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8"));
+                return;
+            }
+
+            label.Text = $"{latencyMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}ms";
+            string colorHex = latencyMs < 50.0  ? "#16A34A"   // green  — good
+                            : latencyMs <= 150.0 ? "#D97706"   // amber  — moderate
+                            :                      "#DC2626";  // red    — high
+            label.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colorHex));
         }
 
         private void BtnToggleTimingMode_Click(object sender, RoutedEventArgs e)
@@ -722,9 +756,145 @@ namespace boston_timing_system
                 {
                     _engine.RemoveOwsRecord(record);
                     UpdateOwsSummaryUi();
+                    _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
                     AddLogMessage($"[OWS DELETE] Rank #{record.Rank} dihapus.");
                 }
             }
+        }
+
+        private void OwsBibNumber_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && sender is TextBox tb)
+            {
+                OwsBibNumber_LostFocus(tb, new RoutedEventArgs());
+                tb.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            }
+        }
+
+        /// <summary>
+        /// Fired when the operator leaves the BIB TextBox in the OWS finisher table.
+        /// Looks up the BIB in the registered participant list (current heat) and auto-fills
+        /// SwimmerName + Club on the OwsRecordModel if a match is found, and marks the participant as Finished.
+        /// Does NOT create new participants — only updates the existing OWS record and heat lane.
+        /// </summary>
+        private void OwsBibNumber_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (sender is not TextBox tb || tb.Tag is not OwsRecordModel record)
+            {
+                return;
+            }
+
+            string enteredBib = record.BibNumber?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(enteredBib))
+            {
+                record.SwimmerName = string.Empty;
+                record.Club = string.Empty;
+                record.Status = LaneStatus.Finished;
+
+                // Revert any lane previously associated with this rank
+                if (_engine.CurrentHeat != null)
+                {
+                    var prevLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l => l.Rank == record.Rank);
+                    if (prevLane != null)
+                    {
+                        prevLane.Status = _engine.Status == RaceStatus.Running ? LaneStatus.Running : LaneStatus.Ready;
+                        prevLane.FinishTime = null;
+                        prevLane.FormattedTime = "00.00.00";
+                        prevLane.Rank = null;
+
+                        var prevEngineLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == prevLane.LaneNumber);
+                        if (prevEngineLane != null)
+                        {
+                            prevEngineLane.Status = prevLane.Status;
+                            prevEngineLane.FinishTime = null;
+                            prevEngineLane.FormattedTime = "00.00.00";
+                            prevEngineLane.Rank = null;
+                        }
+                    }
+                }
+                _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
+                return;
+            }
+
+            // Check for duplicate BIB in other records (same finisher tapped twice)
+            bool isDuplicate = _engine.OwsRecords
+                .Any(r => r != record && 
+                     string.Equals(r.BibNumber, enteredBib, StringComparison.OrdinalIgnoreCase));
+
+            if (isDuplicate)
+            {
+                MessageBox.Show(
+                    $"BIB \"{enteredBib}\" sudah tercatat di finisher lain.\n\nSetiap BIB hanya boleh muncul satu kali. Silakan periksa kembali.",
+                    "BIB Duplikat",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                record.BibNumber = string.Empty;
+                record.SwimmerName = string.Empty;
+                record.Club = string.Empty;
+                return;
+            }
+
+            // If this finisher rank previously matched a different lane, revert the old lane
+            if (_engine.CurrentHeat != null)
+            {
+                var prevLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l =>
+                    l.Rank == record.Rank &&
+                    (l.HasExplicitBibNumber ? !l.BibNumber.Equals(enteredBib, StringComparison.OrdinalIgnoreCase) : l.LaneNumber.ToString() != enteredBib));
+                if (prevLane != null)
+                {
+                    prevLane.Status = _engine.Status == RaceStatus.Running ? LaneStatus.Running : LaneStatus.Ready;
+                    prevLane.FinishTime = null;
+                    prevLane.FormattedTime = "00.00.00";
+                    prevLane.Rank = null;
+
+                    var prevEngineLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == prevLane.LaneNumber);
+                    if (prevEngineLane != null)
+                    {
+                        prevEngineLane.Status = prevLane.Status;
+                        prevEngineLane.FinishTime = null;
+                        prevEngineLane.FormattedTime = "00.00.00";
+                        prevEngineLane.Rank = null;
+                    }
+                }
+            }
+
+            // Lookup participant from heat registration data
+            var participant = _engine.LookupParticipantByBib(enteredBib);
+
+            if (participant != null)
+            {
+                // Update participant status and timing details in the heat
+                participant.Status = LaneStatus.Finished;
+                participant.FinishTime = record.FinishTime;
+                participant.FormattedTime = record.FormattedTime;
+                participant.Rank = record.Rank;
+
+                // Sync with engine lane if exists
+                var engineLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == participant.LaneNumber);
+                if (engineLane != null)
+                {
+                    engineLane.Status = LaneStatus.Finished;
+                    engineLane.FinishTime = record.FinishTime;
+                    engineLane.FormattedTime = record.FormattedTime;
+                    engineLane.Rank = record.Rank;
+                }
+
+                // Automatically display name and club from the matched registered participant
+                record.SwimmerName = participant.SwimmerName ?? string.Empty;
+                record.Club = participant.Club ?? string.Empty;
+
+                AddLogMessage($"[OWS BIB] #{record.Rank} BIB {enteredBib} → {record.SwimmerName} ({record.Club}) [Finished]");
+            }
+            else
+            {
+                // BIB not found in heat — clear name and club on the record
+                record.SwimmerName = string.Empty;
+                record.Club = string.Empty;
+                AddLogMessage($"[OWS BIB] #{record.Rank} BIB {enteredBib} tidak ditemukan di daftar peserta heat ini.");
+            }
+
+            // Broadcast updated state to mobile devices
+            _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
         }
 
         private void UpdateOwsSummaryUi()

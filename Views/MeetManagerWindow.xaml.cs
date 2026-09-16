@@ -475,12 +475,9 @@ namespace boston_timing_system.Views
                 {
                     // File has no recognizable header — unknown format
                     MessageBox.Show(
-                        $"File \"{fileName}\" tidak dapat dikenali formatnya.\n\n" +
-                        $"Pastikan file menggunakan template yang sesuai:\n" +
-                        $"  • Mode Pool  → kolom wajib: Event No, Heat, Lane, Athlete\n" +
-                        $"  • Mode OWS   → kolom wajib: Event No, No Bib, Athlete\n\n" +
-                        $"Gunakan tombol 'Download Template' untuk mendapatkan template yang benar.",
-                        "Format File Tidak Dikenali",
+                        $"File \"{fileName}\" the format cannot be recognized.\n\n" +
+                        $"Use the 'Download Template' button to get the correct template.",
+                        "File format not recognized",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                     return;
@@ -498,15 +495,9 @@ namespace boston_timing_system.Views
                         : "Event No, Heat, Lane, Athlete";
 
                     MessageBox.Show(
-                        $"File \"{fileName}\" tidak dapat diimport.\n\n" +
-                        $"Mode aktif saat ini : {modeLabel}\n" +
-                        $"Format file terdeteksi : {fileModeName}\n\n" +
-                        $"File ini berformat {fileModeName} (kolom: {detectedCols}),\n" +
-                        $"sedangkan mode {modeLabel} memerlukan kolom: {requiredCols}.\n\n" +
-                        $"Silakan:\n" +
-                        $"  • Pilih file Excel yang sesuai dengan mode {modeLabel}, atau\n" +
-                        $"  • Ganti mode timing di layar utama sebelum mengimport file ini.",
-                        $"Format File Tidak Sesuai Mode ({modeLabel})",
+                        $"File \"{fileName}\" cannot be imported.\n\n" +
+                        $"Select the Excel file that corresponds to the mode. {modeLabel}, or change the timing mode on the main screen before importing this file.",
+                        "File format does not match the mode",
                         MessageBoxButton.OK,
                         MessageBoxImage.Error);
                     return;
@@ -525,11 +516,7 @@ namespace boston_timing_system.Views
                 string participantLabel = _timingMode == TimingMode.OpenWater ? "BIB Participants" : "Athlete";
 
                 MessageBox.Show(
-                    $"Start list imported successfully!\n\n" +
-                    $"Mode      : {modeLabel}\n" +
-                    $"Events    : {Meet.Events.Count}\n" +
-                    $"Total Heats    : {Meet.Events.Sum(ev => ev.Heats.Count)}\n" +
-                    $"Total {participantLabel}: {totalParticipants}",
+                    $"Start list imported successfully!",
                     "Import Successful",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -539,16 +526,16 @@ namespace boston_timing_system.Views
                 if (IsFileLockedException(ex))
                 {
                     MessageBox.Show(
-                        $"File '{fileName}' sedang dibuka di program lain.\n\n" +
-                        $"Tutup file tersebut terlebih dahulu, lalu coba lagi.",
-                        "File Excel Sedang Terbuka",
+                        $"File '{fileName}' currently open in another program.\n\n" +
+                        $"Close the file first, then try again.",
+                        "The Excel file is currently open",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                 }
                 else
                 {
                     MessageBox.Show(
-                        $"Gagal mengimport file Excel:\n\n{ex.Message}",
+                        $"Failed to import Excel file:\n\n{ex.Message}",
                         "Import Error",
                         MessageBoxButton.OK,
                         MessageBoxImage.Error);
@@ -591,7 +578,7 @@ namespace boston_timing_system.Views
                     {
                         MessageBox.Show(
                             $"File '{System.IO.Path.GetFileName(dialog.FileName)}' It is currently open in another program.\n\nPlease close the file in the other program first, or save it with a different filename.",
-                            "The Excel file is currently open.",
+                            "The Excel file is currently open",
                             MessageBoxButton.OK,
                             MessageBoxImage.Warning);
                     }
@@ -615,7 +602,7 @@ namespace boston_timing_system.Views
                 int hr = ioEx.HResult & 0xFFFF;
                 return hr == 32 || hr == 33 
                     || ioEx.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase)
-                    || ioEx.Message.Contains("digunakan oleh proses lain", StringComparison.OrdinalIgnoreCase);
+                    || ioEx.Message.Contains("The Excel file is currently open", StringComparison.OrdinalIgnoreCase);
             }
             return false;
         }
@@ -633,7 +620,7 @@ namespace boston_timing_system.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to open the result export dialog.:\n\n{ex.Message}", "Error Ekspor", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Failed to open the result export dialog:\n\n{ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

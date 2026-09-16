@@ -291,6 +291,9 @@ namespace boston_timing_system.Models
                 if (SetProperty(ref _refereeLatencyMs, value))
                 {
                     OnPropertyChanged(nameof(FormattedLatency));
+                    OnPropertyChanged(nameof(IsLatencyGood));
+                    OnPropertyChanged(nameof(IsLatencyMedium));
+                    OnPropertyChanged(nameof(IsLatencyHigh));
                     OnPropertyChanged(nameof(RefereeConnectionTooltip));
                 }
             }
@@ -299,6 +302,13 @@ namespace boston_timing_system.Models
         public string FormattedLatency => _refereeLatencyMs > 0 
             ? $"{_refereeLatencyMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}ms" 
             : "--";
+
+        /// <summary>One-way latency below 50 ms — good quality.</summary>
+        public bool IsLatencyGood   => _refereeLatencyMs > 0 && _refereeLatencyMs < 50.0;
+        /// <summary>One-way latency between 50 and 150 ms — moderate quality.</summary>
+        public bool IsLatencyMedium => _refereeLatencyMs >= 50.0 && _refereeLatencyMs <= 150.0;
+        /// <summary>One-way latency above 150 ms — poor quality.</summary>
+        public bool IsLatencyHigh   => _refereeLatencyMs > 150.0;
 
         public string RefereeConnectionTooltip => IsRefereeConnected
             ? $"Referee Connected (RTT Latency: {FormattedLatency})"
