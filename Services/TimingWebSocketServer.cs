@@ -704,6 +704,12 @@ namespace boston_timing_system.Services
 
                     case "STOP_ACTIVE_LANES":
                     case "STOP_ALL_ACTIVE":
+                        if (_engine.CurrentMode == TimingMode.OpenWater)
+                        {
+                            Log($"Command '{actionUpper}' from {client.Role} ({client.IpAddress}) diabaikan: mode Open Water (OWS) tidak mendukung aksi hentikan semua lintasan.");
+                            break;
+                        }
+
                         double activeLatencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
                         TimeSpan? compActiveTime = null;
                         if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
@@ -833,6 +839,20 @@ namespace boston_timing_system.Services
                     });
                     return;
                 }
+            }
+
+            // Pengecekan & pembatasan: Mode Open Water (OWS) tidak mendukung role Chief
+            if (_engine.CurrentMode == TimingMode.OpenWater && parsedRole == ClientRole.Chief)
+            {
+                client.IsAuthenticated = false;
+                client.Role = ClientRole.Unknown;
+                Log($"[AUTH REJECTED] {client.IpAddress} ({command.DeviceName ?? "Device"}) ditolak: Mode Open Water (OWS) tidak mendukung role Chief.");
+                SendToSocket(client.Socket, new ServerEvent
+                {
+                    Event = "AUTH_FAILED",
+                    Message = "Mode Open Water (OWS) tidak menggunakan role Chief! Silakan pilih role Wasit Finis atau Starter."
+                });
+                return;
             }
 
             client.Role = parsedRole;
@@ -1110,6 +1130,27 @@ namespace boston_timing_system.Services
 
         private void HandleEngineModeChanged(TimingMode mode)
         {
+            if (mode == TimingMode.OpenWater)
+            {
+                // Jika berpindah ke mode OWS, batalkan dan cabut peran Chief yang sedang terhubung
+                var chiefClients = _clients.Values.Where(c => c.Role == ClientRole.Chief).ToList();
+                foreach (var chief in chiefClients)
+                {
+                    chief.Role = ClientRole.Unknown;
+                    chief.IsAuthenticated = false;
+                    Log($"[ROLE REVOKED] {chief.IpAddress} role Chief dicabut karena mode timing berpindah ke Open Water (OWS).");
+                    SendToSocket(chief.Socket, new ServerEvent
+                    {
+                        Event = "AUTH_REQUIRED",
+                        Message = "Mode timing berganti ke Open Water (OWS). Role Chief dinonaktifkan pada mode OWS. Silakan hubungkan kembali sebagai Wasit Finis atau Starter."
+                    });
+                }
+                if (chiefClients.Count > 0)
+                {
+                    UpdateClientMetrics();
+                }
+            }
+
             Broadcast(new ServerEvent
             {
                 Event = "TIMING_MODE_CHANGED",

@@ -582,18 +582,55 @@ namespace boston_timing_system.Services
         /// </summary>
         public (bool Success, string Message) PrintVisualToPrinter(FrameworkElement visual, string? printerName = null)
         {
+            LocalPrintServer? printServer = null;
+            PrintQueue? queue = null;
+
             try
             {
                 var printDialog = new PrintDialog();
 
-                if (!string.IsNullOrWhiteSpace(printerName))
+                try
                 {
-                    using var printServer = new LocalPrintServer();
-                    using var queue = printServer.GetPrintQueue(printerName);
+                    printServer = new LocalPrintServer();
+                    if (!string.IsNullOrWhiteSpace(printerName))
+                    {
+                        queue = printServer.GetPrintQueue(printerName);
+                    }
+                    else
+                    {
+                        queue = printServer.DefaultPrintQueue;
+                    }
+
                     if (queue != null)
                     {
                         printDialog.PrintQueue = queue;
                     }
+                }
+                catch (Exception ex)
+                {
+                    // Fallback to default queue if specific printer failed to open
+                    if (!string.IsNullOrWhiteSpace(printerName) && printServer != null)
+                    {
+                        try
+                        {
+                            queue = printServer.DefaultPrintQueue;
+                            if (queue != null)
+                            {
+                                printDialog.PrintQueue = queue;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (printDialog.PrintQueue == null)
+                    {
+                        return (false, $"Gagal mengakses antrean printer: {ex.Message}");
+                    }
+                }
+
+                if (printDialog.PrintQueue == null)
+                {
+                    return (false, "Printer tidak ditemukan. Pastikan printer terhubung atau default printer Windows telah diatur.");
                 }
 
                 // Measure and arrange visual if it is not currently rendered in visual tree
@@ -602,11 +639,16 @@ namespace boston_timing_system.Services
                 visual.UpdateLayout();
 
                 printDialog.PrintVisual(visual, "Race Result 58mm");
-                return (true, $"Printed successfully to {printDialog.PrintQueue?.Name ?? "Default Printer"}");
+                return (true, $"Printed successfully to {printDialog.PrintQueue.Name}");
             }
             catch (Exception ex)
             {
                 return (false, $"Print error: {ex.Message}");
+            }
+            finally
+            {
+                queue?.Dispose();
+                printServer?.Dispose();
             }
         }
 

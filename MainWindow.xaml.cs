@@ -24,6 +24,7 @@ namespace boston_timing_system
         private readonly Services.ThermalPrintService _thermalService = new();
         private readonly MeetPersistenceService _persistenceService = new();
         private bool _isLoadingHeat;
+        private bool _isHandlingOwsBibFocus;
 
         private CompetitionMeetModel _poolMeet = new();
         private CompetitionMeetModel _owsMeet = new();
@@ -187,10 +188,13 @@ namespace boston_timing_system
 
         private void BtnOpenMeetManager_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null)
+            if (_engine.CurrentHeat != null && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
             {
-                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
             }
+
+            var originalEvent = _currentMeet.SelectedEvent;
+            var originalHeat = _currentMeet.SelectedHeat;
 
             var meetManagerWin = new MeetManagerWindow(_currentMeet, _excelService, _engine.CurrentMode, _persistenceService)
             {
@@ -199,6 +203,10 @@ namespace boston_timing_system
 
             if (meetManagerWin.ShowDialog() == true)
             {
+                _engine.ResetRace();
+                _displayTimer.Stop();
+                txtMasterTimer.Text = "00.00.00";
+
                 _currentMeet = meetManagerWin.Meet;
                 txtMeetTitle.Text = _currentMeet.MeetName;
 
@@ -233,16 +241,27 @@ namespace boston_timing_system
                     UpdateNavigationButtonStates();
                 }
 
+                if (_engine.CurrentMode == TimingMode.OpenWater)
+                {
+                    UpdateOwsSummaryUi();
+                }
+
                 txtServerLog.Text = $"Meet '{_currentMeet.MeetName}' active ({_currentMeet.Events.Count} Events).";
+                AddLogMessage($"Meet '{_currentMeet.MeetName}' loaded ({_currentMeet.Events.Count} Events).");
                 TriggerAutoSave(immediate: true);
+            }
+            else
+            {
+                _currentMeet.SelectedEvent = originalEvent;
+                _currentMeet.SelectedHeat = originalHeat;
             }
         }
 
         private void BtnPrevEvent_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null)
+            if (_engine.CurrentHeat != null && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
             {
-                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
             }
 
             if (_currentMeet.PreviousEvent())
@@ -262,9 +281,9 @@ namespace boston_timing_system
 
         private void BtnNextEvent_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null)
+            if (_engine.CurrentHeat != null && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
             {
-                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
             }
 
             if (_currentMeet.NextEvent())
@@ -298,10 +317,10 @@ namespace boston_timing_system
 
         private void LoadHeat(HeatModel selectedHeat)
         {
-            // Save previous heat results if finished
-            if (_currentMeet.SelectedHeat != null && _currentMeet.SelectedHeat != selectedHeat && _engine.Status == RaceStatus.Finished)
+            // Save previous heat results if finished or running
+            if (_engine.CurrentHeat != null && _engine.CurrentHeat != selectedHeat && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
             {
-                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
                 TriggerAutoSave(immediate: false);
             }
 
@@ -358,9 +377,9 @@ namespace boston_timing_system
 
         private void BtnPrevHeat_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null)
+            if (_engine.CurrentHeat != null && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
             {
-                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
             }
 
             if (_currentMeet.PreviousHeat())
@@ -374,9 +393,9 @@ namespace boston_timing_system
 
         private void BtnNextHeat_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentMeet.SelectedHeat != null)
+            if (_engine.CurrentHeat != null && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
             {
-                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
             }
 
             if (_currentMeet.NextHeat())
@@ -447,9 +466,9 @@ namespace boston_timing_system
             _displayTimer.Stop();
             txtMasterTimer.Text = _engine.FormattedElapsedTime;
 
-            if (_currentMeet.SelectedHeat != null)
+            if (_engine.CurrentHeat != null)
             {
-                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
             }
 
             UpdateUiState();
@@ -519,9 +538,9 @@ namespace boston_timing_system
                 if (_engine.IsRunning && lane.Status == LaneStatus.Running)
                 {
                     _engine.StopLane(lane.LaneNumber);
-                    if (_currentMeet.SelectedHeat != null)
+                    if (_engine.CurrentHeat != null)
                     {
-                        _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                        _engine.SaveResultsToHeat(_engine.CurrentHeat);
                     }
                     TriggerAutoSave(immediate: false);
                 }
@@ -534,9 +553,9 @@ namespace boston_timing_system
             if (sender is Button { DataContext: LaneModel lane })
             {
                 _engine.StopLane(lane.LaneNumber);
-                if (_currentMeet.SelectedHeat != null)
+                if (_engine.CurrentHeat != null)
                 {
-                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                    _engine.SaveResultsToHeat(_engine.CurrentHeat);
                 }
                 TriggerAutoSave(immediate: false);
             }
@@ -581,8 +600,10 @@ namespace boston_timing_system
             });
         }
 
-        private static readonly SolidColorBrush ActiveSignalBrush = CreateFrozenBrush("#16A34A");
-        private static readonly SolidColorBrush IdleSignalBrush = CreateFrozenBrush("#94A3B8");
+        private static readonly SolidColorBrush SignalGreenBrush = CreateFrozenBrush("#16A34A");
+        private static readonly SolidColorBrush SignalAmberBrush = CreateFrozenBrush("#D97706");
+        private static readonly SolidColorBrush SignalRedBrush   = CreateFrozenBrush("#DC2626");
+        private static readonly SolidColorBrush SignalIdleBrush  = CreateFrozenBrush("#94A3B8");
 
         private static SolidColorBrush CreateFrozenBrush(string colorHex)
         {
@@ -591,33 +612,72 @@ namespace boston_timing_system
             return brush;
         }
 
+        private void UpdateSignalBars(
+            System.Windows.Shapes.Rectangle b1,
+            System.Windows.Shapes.Rectangle b2,
+            System.Windows.Shapes.Rectangle b3,
+            System.Windows.Shapes.Rectangle b4,
+            bool isConnected,
+            double latencyMs)
+        {
+            if (!isConnected)
+            {
+                b1.Fill = SignalIdleBrush;
+                b2.Fill = SignalIdleBrush;
+                b3.Fill = SignalIdleBrush;
+                b4.Fill = SignalIdleBrush;
+                return;
+            }
+
+            int bars;
+            SolidColorBrush activeBrush;
+
+            if (latencyMs <= 0 || latencyMs < 50.0)
+            {
+                bars = 4;
+                activeBrush = SignalGreenBrush;
+            }
+            else if (latencyMs < 100.0)
+            {
+                bars = 3;
+                activeBrush = SignalGreenBrush;
+            }
+            else if (latencyMs <= 150.0)
+            {
+                bars = 2;
+                activeBrush = SignalAmberBrush;
+            }
+            else
+            {
+                bars = 1;
+                activeBrush = SignalRedBrush;
+            }
+
+            b1.Fill = bars >= 1 ? activeBrush : SignalIdleBrush;
+            b2.Fill = bars >= 2 ? activeBrush : SignalIdleBrush;
+            b3.Fill = bars >= 3 ? activeBrush : SignalIdleBrush;
+            b4.Fill = bars >= 4 ? activeBrush : SignalIdleBrush;
+        }
+
         private void UpdateMobileConnectIndicators()
         {
             bool hasStarter = _wsServer.StartersCount > 0;
-            barStarter1.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
-            barStarter2.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
-            barStarter3.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
-            barStarter4.Fill = hasStarter ? ActiveSignalBrush : IdleSignalBrush;
+            UpdateSignalBars(barStarter1, barStarter2, barStarter3, barStarter4, hasStarter, _wsServer.StarterLatencyMs);
             UpdateFooterLatencyLabel(txtStarterLatency, hasStarter, _wsServer.StarterLatencyMs);
 
             if (_engine.IsOpenWaterMode)
             {
                 txtMobileRole2.Text = "OWS REFEREE";
                 bool hasReferee = _wsServer.IsOwsRefereeConnected || _wsServer.RefereesCount > 0;
-                barChief1.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
-                barChief2.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
-                barChief3.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
-                barChief4.Fill = hasReferee ? ActiveSignalBrush : IdleSignalBrush;
-                UpdateFooterLatencyLabel(txtChiefLatency, hasReferee, _wsServer.ChiefLatencyMs);
+                double latency = _wsServer.OwsRefereeLatencyMs > 0 ? _wsServer.OwsRefereeLatencyMs : _wsServer.ChiefLatencyMs;
+                UpdateSignalBars(barChief1, barChief2, barChief3, barChief4, hasReferee, latency);
+                UpdateFooterLatencyLabel(txtChiefLatency, hasReferee, latency);
             }
             else
             {
                 txtMobileRole2.Text = "CHIEF";
                 bool hasChief = _wsServer.ChiefsCount > 0;
-                barChief1.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
-                barChief2.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
-                barChief3.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
-                barChief4.Fill = hasChief ? ActiveSignalBrush : IdleSignalBrush;
+                UpdateSignalBars(barChief1, barChief2, barChief3, barChief4, hasChief, _wsServer.ChiefLatencyMs);
                 UpdateFooterLatencyLabel(txtChiefLatency, hasChief, _wsServer.ChiefLatencyMs);
             }
         }
@@ -658,9 +718,9 @@ namespace boston_timing_system
             }
 
             // Save results of currently loaded heat before switching
-            if (_currentMeet.SelectedHeat != null)
+            if (_engine.CurrentHeat != null && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
             {
-                _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
             }
 
             var targetMode = _engine.CurrentMode == TimingMode.Pool ? TimingMode.OpenWater : TimingMode.Pool;
@@ -794,10 +854,14 @@ namespace boston_timing_system
 
         private void OwsBibNumber_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Enter && sender is TextBox tb)
+            if (e.Key == Key.Enter && sender is TextBox tb && tb.Tag is OwsRecordModel record)
             {
-                OwsBibNumber_LostFocus(tb, new RoutedEventArgs());
-                tb.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                e.Handled = true;
+                bool isValid = ProcessOwsBibInput(tb, record);
+                if (isValid)
+                {
+                    tb.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                }
             }
         }
 
@@ -809,22 +873,112 @@ namespace boston_timing_system
         /// </summary>
         private void OwsBibNumber_LostFocus(object sender, RoutedEventArgs e)
         {
-            if (sender is not TextBox tb || tb.Tag is not OwsRecordModel record)
+            if (sender is TextBox tb && tb.Tag is OwsRecordModel record)
             {
-                return;
+                ProcessOwsBibInput(tb, record);
+            }
+        }
+
+        private bool ProcessOwsBibInput(TextBox tb, OwsRecordModel record)
+        {
+            if (_isHandlingOwsBibFocus)
+            {
+                return false;
             }
 
-            string enteredBib = record.BibNumber?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(enteredBib))
+            try
             {
-                record.SwimmerName = string.Empty;
-                record.Club = string.Empty;
-                record.Status = LaneStatus.Finished;
+                _isHandlingOwsBibFocus = true;
 
-                // Revert any lane previously associated with this rank
+                string enteredBib = record.BibNumber?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(enteredBib))
+                {
+                    record.SwimmerName = string.Empty;
+                    record.Club = string.Empty;
+                    record.Status = LaneStatus.Finished;
+
+                    // Revert any lane previously associated with this rank
+                    if (_engine.CurrentHeat != null)
+                    {
+                        var prevLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l => l.Rank == record.Rank);
+                        if (prevLane != null)
+                        {
+                            prevLane.Status = _engine.Status == RaceStatus.Running ? LaneStatus.Running : LaneStatus.Ready;
+                            prevLane.FinishTime = null;
+                            prevLane.FormattedTime = "00.00.00";
+                            prevLane.Rank = null;
+
+                            var prevEngineLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == prevLane.LaneNumber);
+                            if (prevEngineLane != null)
+                            {
+                                prevEngineLane.Status = prevLane.Status;
+                                prevEngineLane.FinishTime = null;
+                                prevEngineLane.FormattedTime = "00.00.00";
+                                prevEngineLane.Rank = null;
+                            }
+                        }
+                    }
+                    _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
+                    return true;
+                }
+
+                // Check for duplicate BIB in other records (same finisher tapped twice)
+                bool isDuplicate = _engine.OwsRecords
+                    .Any(r => r != record && 
+                         string.Equals(r.BibNumber, enteredBib, StringComparison.OrdinalIgnoreCase));
+
+                if (isDuplicate)
+                {
+                    MessageBox.Show(
+                        $"BIB \"{enteredBib}\" sudah tercatat di finisher lain.\n\nSetiap BIB hanya boleh muncul satu kali. Silakan periksa kembali.",
+                        "BIB Duplikat",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    record.BibNumber = string.Empty;
+                    record.SwimmerName = string.Empty;
+                    record.Club = string.Empty;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        tb.Focus();
+                        tb.SelectAll();
+                    }));
+                    return false;
+                }
+
+                // Lookup participant from heat registration data
+                var participant = _engine.LookupParticipantByBib(enteredBib);
+
+                if (participant == null)
+                {
+                    record.BibNumber = string.Empty;
+                    record.SwimmerName = string.Empty;
+                    record.Club = string.Empty;
+                    AddLogMessage($"[OWS BIB] #{record.Rank} BIB {enteredBib} tidak ditemukan di daftar peserta heat ini.");
+
+                    string heatInfo = _engine.CurrentHeat != null
+                        ? $"Event {_engine.CurrentHeat.EventNumber} (Heat {_engine.CurrentHeat.HeatNumber})"
+                        : "heat saat ini";
+
+                    MessageBox.Show(
+                        $"Nomor BIB \"{enteredBib}\" tidak terdaftar pada {heatInfo}.\n\nSilakan periksa kembali daftar peserta atau nomor BIB yang dimasukkan.",
+                        "BIB Tidak Terdaftar",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        tb.Focus();
+                        tb.SelectAll();
+                    }));
+                    return false;
+                }
+
+                // If this finisher rank previously matched a different lane, revert the old lane
                 if (_engine.CurrentHeat != null)
                 {
-                    var prevLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l => l.Rank == record.Rank);
+                    var prevLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l =>
+                        l.Rank == record.Rank &&
+                        (l.HasExplicitBibNumber ? !l.BibNumber.Equals(enteredBib, StringComparison.OrdinalIgnoreCase) : l.LaneNumber.ToString() != enteredBib));
                     if (prevLane != null)
                     {
                         prevLane.Status = _engine.Status == RaceStatus.Running ? LaneStatus.Running : LaneStatus.Ready;
@@ -842,57 +996,7 @@ namespace boston_timing_system
                         }
                     }
                 }
-                _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
-                return;
-            }
 
-            // Check for duplicate BIB in other records (same finisher tapped twice)
-            bool isDuplicate = _engine.OwsRecords
-                .Any(r => r != record && 
-                     string.Equals(r.BibNumber, enteredBib, StringComparison.OrdinalIgnoreCase));
-
-            if (isDuplicate)
-            {
-                MessageBox.Show(
-                    $"BIB \"{enteredBib}\" sudah tercatat di finisher lain.\n\nSetiap BIB hanya boleh muncul satu kali. Silakan periksa kembali.",
-                    "BIB Duplikat",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                record.BibNumber = string.Empty;
-                record.SwimmerName = string.Empty;
-                record.Club = string.Empty;
-                return;
-            }
-
-            // If this finisher rank previously matched a different lane, revert the old lane
-            if (_engine.CurrentHeat != null)
-            {
-                var prevLane = _engine.CurrentHeat.Lanes.FirstOrDefault(l =>
-                    l.Rank == record.Rank &&
-                    (l.HasExplicitBibNumber ? !l.BibNumber.Equals(enteredBib, StringComparison.OrdinalIgnoreCase) : l.LaneNumber.ToString() != enteredBib));
-                if (prevLane != null)
-                {
-                    prevLane.Status = _engine.Status == RaceStatus.Running ? LaneStatus.Running : LaneStatus.Ready;
-                    prevLane.FinishTime = null;
-                    prevLane.FormattedTime = "00.00.00";
-                    prevLane.Rank = null;
-
-                    var prevEngineLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == prevLane.LaneNumber);
-                    if (prevEngineLane != null)
-                    {
-                        prevEngineLane.Status = prevLane.Status;
-                        prevEngineLane.FinishTime = null;
-                        prevEngineLane.FormattedTime = "00.00.00";
-                        prevEngineLane.Rank = null;
-                    }
-                }
-            }
-
-            // Lookup participant from heat registration data
-            var participant = _engine.LookupParticipantByBib(enteredBib);
-
-            if (participant != null)
-            {
                 // Update participant status and timing details in the heat
                 participant.Status = LaneStatus.Finished;
                 participant.FinishTime = record.FinishTime;
@@ -914,17 +1018,15 @@ namespace boston_timing_system
                 record.Club = participant.Club ?? string.Empty;
 
                 AddLogMessage($"[OWS BIB] #{record.Rank} BIB {enteredBib} → {record.SwimmerName} ({record.Club}) [Finished]");
-            }
-            else
-            {
-                // BIB not found in heat — clear name and club on the record
-                record.SwimmerName = string.Empty;
-                record.Club = string.Empty;
-                AddLogMessage($"[OWS BIB] #{record.Rank} BIB {enteredBib} tidak ditemukan di daftar peserta heat ini.");
-            }
 
-            // Broadcast updated state to mobile devices
-            _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
+                // Broadcast updated state to mobile devices
+                _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
+                return true;
+            }
+            finally
+            {
+                _isHandlingOwsBibFocus = false;
+            }
         }
 
         private void UpdateOwsSummaryUi()
@@ -939,15 +1041,15 @@ namespace boston_timing_system
         private void BtnPrintResults_Click(object sender, RoutedEventArgs e)
         {
             var currentMode = _engine.CurrentMode;
-            var heatToPrint = _currentMeet.SelectedHeat;
+            var heatToPrint = _currentMeet.SelectedHeat ?? _engine.CurrentHeat;
             if (heatToPrint == null)
             {
                 heatToPrint = new HeatModel(1, 1, _currentMeet.SelectedEvent?.EventName ?? (currentMode == TimingMode.OpenWater ? "OWS Race" : "Race Event"));
                 _engine.SaveResultsToHeat(heatToPrint);
             }
-            else
+            else if (_engine.CurrentHeat != null && ReferenceEquals(heatToPrint, _engine.CurrentHeat))
             {
-                _engine.SaveResultsToHeat(heatToPrint);
+                _engine.SaveResultsToHeat(_engine.CurrentHeat);
             }
 
             if (currentMode == TimingMode.OpenWater && _engine.OwsRecords.Count > 0)
@@ -1029,7 +1131,7 @@ namespace boston_timing_system
                 int port = _wsServer?.Port ?? 8181;
                 string code = _wsServer?.AccessCode ?? txtAccessCode?.Text ?? "1000";
 
-                var qrWindow = new Views.QrCodeConnectionWindow(ip, port, code, webPort: 3000)
+                var qrWindow = new Views.QrCodeConnectionWindow(ip, port, code, webPort: 3000, timingMode: _engine.CurrentMode)
                 {
                     Owner = this
                 };
@@ -1080,9 +1182,9 @@ namespace boston_timing_system
                 bdRaceStatus.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFEDD5"));
                 bdRaceStatus.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FED7AA"));
 
-                if (_currentMeet.SelectedHeat != null)
+                if (_engine.CurrentHeat != null)
                 {
-                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                    _engine.SaveResultsToHeat(_engine.CurrentHeat);
                 }
 
                 UpdateUiState();
@@ -1117,9 +1219,9 @@ namespace boston_timing_system
             {
                 if (_isLoadingHeat || _engine.IsLoadingHeat) return;
 
-                if (_currentMeet.SelectedHeat != null)
+                if (_engine.CurrentHeat != null)
                 {
-                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                    _engine.SaveResultsToHeat(_engine.CurrentHeat);
                 }
                 TriggerAutoSave(immediate: false);
             });
@@ -1133,9 +1235,9 @@ namespace boston_timing_system
             {
                 if (_isLoadingHeat || _engine.IsLoadingHeat) return;
 
-                if (_currentMeet.SelectedHeat != null)
+                if (_engine.CurrentHeat != null)
                 {
-                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                    _engine.SaveResultsToHeat(_engine.CurrentHeat);
                 }
                 TriggerAutoSave(immediate: false);
                 AddLogMessage($"Lane {lane.LaneNumber} status set to {status}");
@@ -1183,9 +1285,9 @@ namespace boston_timing_system
         {
             try
             {
-                if (_currentMeet.SelectedHeat != null)
+                if (_engine.CurrentHeat != null && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
                 {
-                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                    _engine.SaveResultsToHeat(_engine.CurrentHeat);
                 }
                 TriggerAutoSave(immediate: true);
             }
@@ -1201,9 +1303,9 @@ namespace boston_timing_system
 
             try
             {
-                if (_currentMeet.SelectedHeat != null)
+                if (_engine.CurrentHeat != null && (_engine.Status == RaceStatus.Finished || _engine.IsRunning))
                 {
-                    _engine.SaveResultsToHeat(_currentMeet.SelectedHeat);
+                    _engine.SaveResultsToHeat(_engine.CurrentHeat);
                 }
 
                 var dto = new MeetSessionDto

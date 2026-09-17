@@ -734,9 +734,7 @@ namespace boston_timing_system.Core
                                 ? LaneModel.FormatTime(finalFinishTime.Value) 
                                 : (!string.IsNullOrEmpty(heatLane.FormattedTime) ? heatLane.FormattedTime : "00.00.00");
 
-                            engineLane.Timer1 = !string.IsNullOrEmpty(heatLane.Timer1) && heatLane.Timer1 != "00.00.00"
-                                ? heatLane.Timer1
-                                : (finalFinishTime.HasValue ? LaneModel.FormatTime(finalFinishTime.Value) : "00.00.00");
+                            engineLane.Timer1 = !string.IsNullOrEmpty(heatLane.Timer1) ? heatLane.Timer1 : "00.00.00";
                             engineLane.Timer2 = !string.IsNullOrEmpty(heatLane.Timer2) ? heatLane.Timer2 : "00.00.00";
 
                             // 2. Status & Swimmer Info
@@ -831,7 +829,17 @@ namespace boston_timing_system.Core
         {
             lock (_syncLock)
             {
-                if (_isLoadingHeat)
+                if (_isLoadingHeat || heat == null)
+                {
+                    return;
+                }
+
+                // CRITICAL INTEGRITY CHECK:
+                // Only save results if the target heat is actually the heat currently loaded in this timing engine!
+                // Live engine lanes belong exclusively to _currentHeat. Saving into an unrelated heat
+                // causes data corruption across heats (e.g. duplicate times and ranks).
+                if (_currentHeat != null && !ReferenceEquals(heat, _currentHeat) &&
+                    (heat.EventNumber != _currentHeat.EventNumber || heat.HeatNumber != _currentHeat.HeatNumber))
                 {
                     return;
                 }
@@ -887,10 +895,8 @@ namespace boston_timing_system.Core
                         heatLane.Status = engineLane.Status;
                         heatLane.FinishTime = engineLane.FinishTime;
                         heatLane.FormattedTime = engineLane.FormattedTime;
-                        heatLane.Timer1 = !string.IsNullOrEmpty(engineLane.Timer1) && engineLane.Timer1 != "00.00.00"
-                            ? engineLane.Timer1
-                            : (engineLane.FinishTime.HasValue ? LaneModel.FormatTime(engineLane.FinishTime.Value) : "00.00.00");
-                        heatLane.Timer2 = engineLane.Timer2;
+                        heatLane.Timer1 = !string.IsNullOrEmpty(engineLane.Timer1) ? engineLane.Timer1 : "00.00.00";
+                        heatLane.Timer2 = !string.IsNullOrEmpty(engineLane.Timer2) ? engineLane.Timer2 : "00.00.00";
                         heatLane.Rank = engineLane.Rank;
                         if (engineLane.Splits.Count > 0)
                         {
@@ -918,9 +924,10 @@ namespace boston_timing_system.Core
             lock (_syncLock)
             {
                 return _currentHeat.Lanes.FirstOrDefault(l =>
-                    l.HasExplicitBibNumber
+                    (CurrentMode != TimingMode.OpenWater || l.Status != LaneStatus.OFF || !string.IsNullOrWhiteSpace(l.SwimmerName) || l.HasExplicitBibNumber) &&
+                    (l.HasExplicitBibNumber
                         ? l.BibNumber.Equals(bibNumber, StringComparison.OrdinalIgnoreCase)
-                        : l.LaneNumber.ToString() == bibNumber);
+                        : l.LaneNumber.ToString() == bibNumber));
             }
         }
 

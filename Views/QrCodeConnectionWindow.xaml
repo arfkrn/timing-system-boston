@@ -66,7 +66,7 @@
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="SCAN QR CODE - MOBILE CONNECT" 
                                FontSize="14.5" FontWeight="Bold" Foreground="#0F172A"/>
-                    <TextBlock Text="Scan dengan HP untuk menghubungkan Wasit, Starter, atau Chief" 
+                    <TextBlock x:Name="txtQrSubtitle" Text="Scan dengan HP untuk menghubungkan Wasit, Starter, atau Chief" 
                                FontSize="11.5" Foreground="#64748B" Margin="0,3,0,0"/>
                 </StackPanel>
             </Grid>

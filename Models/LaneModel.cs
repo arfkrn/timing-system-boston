@@ -250,10 +250,6 @@ namespace boston_timing_system.Models
                     if (value.HasValue)
                     {
                         FormattedTime = FormatTime(value.Value);
-                        if (string.IsNullOrEmpty(_timer1) || _timer1 == "00.00.00")
-                        {
-                            Timer1 = FormattedTime;
-                        }
                         if (Status != LaneStatus.DQ && Status != LaneStatus.DNS && Status != LaneStatus.DNF && Status != LaneStatus.OFF)
                         {
                             Status = LaneStatus.Finished;
@@ -335,6 +331,7 @@ namespace boston_timing_system.Models
                         RefereeLatencyMs = 0;
                     }
                     OnPropertyChanged(nameof(RefereeConnectionTooltip));
+                    OnPropertyChanged(nameof(SignalBarsCount));
                 }
             }
         }
@@ -352,6 +349,7 @@ namespace boston_timing_system.Models
                     OnPropertyChanged(nameof(IsLatencyMedium));
                     OnPropertyChanged(nameof(IsLatencyHigh));
                     OnPropertyChanged(nameof(RefereeConnectionTooltip));
+                    OnPropertyChanged(nameof(SignalBarsCount));
                 }
             }
         }
@@ -360,6 +358,27 @@ namespace boston_timing_system.Models
         public string FormattedLatency => _refereeLatencyMs > 0 
             ? $"{_refereeLatencyMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}ms" 
             : "--";
+
+        /// <summary>
+        /// Signal bars count from 0 to 4 based on connection status and latency:
+        /// 0: Disconnected
+        /// 4: Connected with latency &lt; 50ms (or unmeasured)
+        /// 3: Connected with latency 50ms – &lt;100ms
+        /// 2: Connected with latency 100ms – 150ms
+        /// 1: Connected with latency &gt; 150ms
+        /// </summary>
+        [JsonIgnore]
+        public int SignalBarsCount
+        {
+            get
+            {
+                if (!IsRefereeConnected) return 0;
+                if (_refereeLatencyMs <= 0 || _refereeLatencyMs < 50.0) return 4;
+                if (_refereeLatencyMs < 100.0) return 3;
+                if (_refereeLatencyMs <= 150.0) return 2;
+                return 1;
+            }
+        }
 
         /// <summary>One-way latency below 50 ms — good quality.</summary>
         [JsonIgnore]
@@ -406,10 +425,6 @@ namespace boston_timing_system.Models
                 FinishTime = elapsed;
                 Status = LaneStatus.Finished;
                 FormattedTime = FormatTime(elapsed);
-                if (string.IsNullOrEmpty(_timer1) || _timer1 == "00.00.00")
-                {
-                    Timer1 = FormattedTime;
-                }
             }
         }
 

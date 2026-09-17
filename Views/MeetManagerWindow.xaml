@@ -219,7 +219,8 @@
                     <Button x:Name="btnImportExcel" Content="Import Event" 
                             Style="{StaticResource HeaderButtonStyle}" 
                             Background="#0D9488" Margin="0,0,8,0" 
-                            Click="BtnImportExcel_Click"/>
+                            Click="BtnImportExcel_Click"
+                            ToolTip="Impor data event baru dari file Excel (akan menimpa data lomba saat ini)"/>
                     <Button x:Name="btnExportResults" Content="Export Results" 
                             Style="{StaticResource HeaderButtonStyle}" 
                             Background="#D97706" 

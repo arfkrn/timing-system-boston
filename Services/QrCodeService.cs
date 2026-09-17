@@ -34,11 +34,11 @@ namespace boston_timing_system.Services
         }
 
         /// <summary>
-        /// Builds standard JSON connection payload containing server IP, WebSocket port, and access code.
+        /// Builds standard JSON connection payload containing server IP, WebSocket port, access code, and timing mode.
         /// </summary>
-        public string BuildJsonPayload(string ip, int port, string accessCode)
+        public string BuildJsonPayload(string ip, int port, string accessCode, string timingMode = "POOL")
         {
-            return $"{{\"ip\":\"{ip}\",\"port\":{port},\"accessCode\":\"{accessCode}\",\"wsUri\":\"ws://{ip}:{port}\"}}";
+            return $"{{\"ip\":\"{ip}\",\"port\":{port},\"accessCode\":\"{accessCode}\",\"wsUri\":\"ws://{ip}:{port}\",\"timingMode\":\"{timingMode}\"}}";
         }
 
         /// <summary>

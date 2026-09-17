@@ -6,11 +6,12 @@
         xmlns:helpers="clr-namespace:boston_timing_system.Helpers"
         xmlns:models="clr-namespace:boston_timing_system.Models"
         mc:Ignorable="d"
-        Title="Swimming Competition Timing System - Master Console" 
+        Title="Swimming Competition Timing System - Operator Console" 
         Height="840" Width="1260"
         MinHeight="700" MinWidth="1020"
         Background="#FFFFFF"
         WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
         Loaded="Window_Loaded"
         Closing="Window_Closing">
 
@@ -647,7 +648,7 @@
                                         <Border Grid.Column="8" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
                                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                                                         ToolTip="{Binding RefereeConnectionTooltip}">
-                                                <!-- 4-bar icon (same as before) -->
+                                                <!-- 4-bar icon (dynamically follows latency) -->
                                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,2">
                                                     <!-- Bar 1 -->
                                                     <Rectangle Width="3" Height="4" Margin="1,0" VerticalAlignment="Bottom" RadiusX="1" RadiusY="1">
@@ -655,8 +656,17 @@
                                                             <Style TargetType="Rectangle">
                                                                 <Setter Property="Fill" Value="#CBD5E1" />
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="4">
                                                                         <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="3">
+                                                                        <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="2">
+                                                                        <Setter Property="Fill" Value="#D97706" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="1">
+                                                                        <Setter Property="Fill" Value="#DC2626" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
@@ -668,8 +678,14 @@
                                                             <Style TargetType="Rectangle">
                                                                 <Setter Property="Fill" Value="#CBD5E1" />
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="4">
                                                                         <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="3">
+                                                                        <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="2">
+                                                                        <Setter Property="Fill" Value="#D97706" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
@@ -681,7 +697,10 @@
                                                             <Style TargetType="Rectangle">
                                                                 <Setter Property="Fill" Value="#CBD5E1" />
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="4">
+                                                                        <Setter Property="Fill" Value="#16A34A" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="3">
                                                                         <Setter Property="Fill" Value="#16A34A" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
@@ -694,7 +713,7 @@
                                                             <Style TargetType="Rectangle">
                                                                 <Setter Property="Fill" Value="#CBD5E1" />
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsRefereeConnected}" Value="True">
+                                                                    <DataTrigger Binding="{Binding SignalBarsCount}" Value="4">
                                                                         <Setter Property="Fill" Value="#16A34A" />
                                                                     </DataTrigger>
                                                                 </Style.Triggers>

@@ -90,8 +90,6 @@ namespace boston_timing_system.Views
                 UpdateSelectedHeatSubtitle();
 
                 dgHeatLanes.ItemsSource = heat.Lanes;
-                Meet.SelectedEvent = parentEvent;
-                Meet.SelectedHeat = heat;
             }
             finally
             {
@@ -118,8 +116,6 @@ namespace boston_timing_system.Views
                     txtSelectedHeatTitle.Text = $"{_selectedHeat.DisplayTitle}";
                     UpdateSelectedHeatSubtitle();
                     dgHeatLanes.ItemsSource = _selectedHeat.Lanes;
-                    Meet.SelectedEvent = raceEvent;
-                    Meet.SelectedHeat = _selectedHeat;
                 }
                 else
                 {
@@ -127,8 +123,6 @@ namespace boston_timing_system.Views
                     txtSelectedHeatTitle.Text = $"{raceEvent.DisplayTitle} (No Heat yet)";
                     txtSelectedHeatSubtitle.Text = "Click the 'New Heat' button to add a new heat.";
                     dgHeatLanes.ItemsSource = null;
-                    Meet.SelectedEvent = raceEvent;
-                    Meet.SelectedHeat = null;
                 }
             }
             finally
@@ -505,21 +499,43 @@ namespace boston_timing_system.Views
                     return;
                 }
 
+                // Konfirmasi timpa data jika sudah ada data meet yang aktif
+                bool hadExistingEvents = Meet.Events.Count > 0;
+                if (hadExistingEvents)
+                {
+                    var confirmResult = MessageBox.Show(
+                        $"Mengimpor file ini akan MENIMPA dan MENGHAPUS seluruh data event, heat, dan perenang yang ada saat ini ({Meet.Events.Count} Event).\n\n" +
+                        $"Aplikasi hanya mendukung 1 meet per sesi.\n\nApakah Anda yakin ingin melanjutkan dan menimpa meet saat ini?",
+                        "Konfirmasi Timpa Data Meet",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning);
+
+                    if (confirmResult != MessageBoxResult.Yes)
+                    {
+                        return;
+                    }
+                }
+
                 // --- Step 2: Mode matched — proceed with full import ---
                 var importedMeet = await System.Threading.Tasks.Task.Run(
                     () => _excelService.ImportMeetFromExcel(filePath, _timingMode));
                 Meet = importedMeet;
+                txtMeetName.Text = Meet.MeetName;
                 BindMeetData();
 
                 int totalParticipants = Meet.Events
                     .SelectMany(ev => ev.Heats)
                     .SelectMany(h => h.Lanes)
                     .Count(l => !string.IsNullOrWhiteSpace(l.SwimmerName));
-                string participantLabel = _timingMode == TimingMode.OpenWater ? "BIB Participants" : "Athlete";
+                string participantLabel = _timingMode == TimingMode.OpenWater ? "peserta BIB" : "perenang";
+
+                string successMessage = hadExistingEvents
+                    ? $"Data meet lama berhasil ditimpa!\n\nBerhasil mengimpor {Meet.Events.Count} Event dan {totalParticipants} {participantLabel} dari file:\n{fileName}"
+                    : $"Start list imported successfully!\n\nBerhasil mengimpor {Meet.Events.Count} Event dan {totalParticipants} {participantLabel}.";
 
                 MessageBox.Show(
-                    $"Start list imported successfully!",
-                    "Import Successful",
+                    successMessage,
+                    hadExistingEvents ? "Import Berhasil (Meet Ditimpa)" : "Import Berhasil",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
@@ -629,6 +645,14 @@ namespace boston_timing_system.Views
         private void BtnApply_Click(object sender, RoutedEventArgs e)
         {
             Meet.MeetName = txtMeetName.Text.Trim();
+            if (_selectedEvent != null)
+            {
+                Meet.SelectedEvent = _selectedEvent;
+            }
+            if (_selectedHeat != null)
+            {
+                Meet.SelectedHeat = _selectedHeat;
+            }
 
             DialogResult = true;
             Close();
@@ -690,6 +714,21 @@ namespace boston_timing_system.Views
 
             if (dialog.ShowDialog() == true)
             {
+                if (Meet.Events.Count > 0)
+                {
+                    var confirmResult = MessageBox.Show(
+                        $"Membuka project baru akan MENIMPA dan MENGHAPUS seluruh data event, heat, dan perenang yang ada saat ini ({Meet.Events.Count} Event).\n\n" +
+                        $"Aplikasi hanya mendukung 1 meet per sesi.\n\nApakah Anda yakin ingin melanjutkan dan menimpa meet saat ini?",
+                        "Konfirmasi Buka Project (Timpa Data)",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning);
+
+                    if (confirmResult != MessageBoxResult.Yes)
+                    {
+                        return;
+                    }
+                }
+
                 btnOpenJson.IsEnabled = false;
                 Mouse.OverrideCursor = Cursors.Wait;
                 try
@@ -701,7 +740,7 @@ namespace boston_timing_system.Views
                         txtMeetName.Text = Meet.MeetName;
                         BindMeetData();
                         MessageBox.Show(
-                            $"Meet '{Meet.MeetName}' berhasil dimuat ({Meet.Events.Count} Events).",
+                            $"Data meet lama berhasil ditimpa!\n\nMeet '{Meet.MeetName}' berhasil dimuat ({Meet.Events.Count} Events).",
                             "Buka Meet Berhasil",
                             MessageBoxButton.OK,
                             MessageBoxImage.Information);
