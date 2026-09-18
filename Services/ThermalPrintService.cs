@@ -104,7 +104,7 @@ namespace boston_timing_system.Services
             string meetTitle = string.IsNullOrWhiteSpace(meet.MeetName) ? defaultTitle : meet.MeetName.ToUpperInvariant();
             sb.AppendLine(CenterText(meetTitle, LineWidth));
 
-            string dateStr = meet.MeetDate.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("id-ID")).ToUpperInvariant();
+            string dateStr = meet.MeetDate.ToString("dd MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture).ToUpperInvariant();
             sb.AppendLine(CenterText(dateStr, LineWidth));
             sb.AppendLine("--------------------------------");
 
@@ -147,10 +147,6 @@ namespace boston_timing_system.Services
                     if (bib.Length > 4) bib = bib.Substring(0, 4);
                     bib = bib.PadLeft(4);
 
-                    string name = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"Swimmer {bib.Trim()}" : lane.SwimmerName.Trim();
-                    if (name.Length > 15) name = name.Substring(0, 15);
-                    name = name.PadRight(15);
-
                     string timeStr = lane.Status switch
                     {
                         LaneStatus.Finished => lane.FormattedTime,
@@ -163,7 +159,17 @@ namespace boston_timing_system.Services
                     if (timeStr.Length > 8) timeStr = timeStr.Substring(0, 8);
                     timeStr = timeStr.PadLeft(8);
 
-                    sb.AppendLine($"{rk} {bib} {name} {timeStr}");
+                    string rawName = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"Swimmer {bib.Trim()}" : lane.SwimmerName.Trim();
+                    var nameLines = WrapText(rawName, 13);
+
+                    string firstLineName = (nameLines.Count > 0 ? nameLines[0] : string.Empty).PadRight(13);
+                    sb.AppendLine($"{rk} {bib} {firstLineName} {timeStr}");
+
+                    for (int i = 1; i < nameLines.Count; i++)
+                    {
+                        string wrapLine = nameLines[i];
+                        sb.AppendLine($"       {wrapLine}");
+                    }
                 }
 
                 sb.AppendLine("--------------------------------");
@@ -172,9 +178,9 @@ namespace boston_timing_system.Services
             }
             else
             {
-                // Columns Header for Pool: LN NAME                  TIME RK
-                // Format: " 1 BUDI SANTOSO      00.27.45  1"
-                sb.AppendLine("LN NAME                  TIME RK");
+                // Columns Header for Pool: LN NAME               TIME  RK
+                // Format: " 1 BUDI SANTOSO       00.27.45  1" (Width = 32)
+                sb.AppendLine("LN NAME               TIME  RK");
                 sb.AppendLine("--------------------------------");
 
                 var activeLanes = heat.Lanes
@@ -190,10 +196,6 @@ namespace boston_timing_system.Services
                 foreach (var lane in activeLanes)
                 {
                     string ln = lane.LaneNumber.ToString().PadLeft(2);
-                    
-                    string name = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"LANE {lane.LaneNumber}" : lane.SwimmerName.Trim();
-                    if (name.Length > 17) name = name.Substring(0, 17);
-                    name = name.PadRight(17);
 
                     string timeStr = lane.Status switch
                     {
@@ -214,7 +216,17 @@ namespace boston_timing_system.Services
                     if (rk.Length > 2) rk = rk.Substring(0, 2);
                     rk = rk.PadLeft(2);
 
-                    sb.AppendLine($"{ln} {name} {timeStr} {rk}");
+                    string rawName = string.IsNullOrWhiteSpace(lane.SwimmerName) ? $"LANE {lane.LaneNumber}" : lane.SwimmerName.Trim();
+                    var nameLines = WrapText(rawName, 15);
+
+                    string firstLineName = (nameLines.Count > 0 ? nameLines[0] : string.Empty).PadRight(15);
+                    sb.AppendLine($"{ln} {firstLineName} {timeStr} {rk}");
+
+                    for (int i = 1; i < nameLines.Count; i++)
+                    {
+                        string wrapLine = nameLines[i];
+                        sb.AppendLine($"   {wrapLine}");
+                    }
                 }
 
                 sb.AppendLine("--------------------------------");
@@ -307,7 +319,7 @@ namespace boston_timing_system.Services
             });
 
             // 3. Meet Date
-            string dateStr = meet.MeetDate.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("id-ID")).ToUpperInvariant();
+            string dateStr = meet.MeetDate.ToString("dd MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture).ToUpperInvariant();
             stack.Children.Add(new TextBlock
             {
                 Text = dateStr,
@@ -464,7 +476,7 @@ namespace boston_timing_system.Services
 
                     AddGridCell(rowGrid, rkText, 0, 0, FontWeights.SemiBold, TextAlignment.Center, 8.5);
                     AddGridCell(rowGrid, bibText, 0, 1, FontWeights.Bold, TextAlignment.Center, 8.5);
-                    AddGridCell(rowGrid, nameText, 0, 2, FontWeights.Normal, TextAlignment.Left, 8.5, true);
+                    AddGridCell(rowGrid, nameText, 0, 2, FontWeights.Normal, TextAlignment.Left, 8.5, trim: false, wrap: true);
                     AddGridCell(rowGrid, timeText, 0, 3, FontWeights.Bold, TextAlignment.Right, 8.5);
 
                     stack.Children.Add(rowGrid);
@@ -534,7 +546,7 @@ namespace boston_timing_system.Services
                         : "-";
 
                     AddGridCell(rowGrid, lnText, 0, 0, FontWeights.SemiBold, TextAlignment.Center, 8.5);
-                    AddGridCell(rowGrid, nameText, 0, 1, FontWeights.Normal, TextAlignment.Left, 8.5, true);
+                    AddGridCell(rowGrid, nameText, 0, 1, FontWeights.Normal, TextAlignment.Left, 8.5, trim: false, wrap: true);
                     AddGridCell(rowGrid, timeText, 0, 2, FontWeights.Bold, TextAlignment.Right, 8.5);
                     AddGridCell(rowGrid, rkText, 0, 3, FontWeights.SemiBold, TextAlignment.Center, 8.5);
 
@@ -624,13 +636,13 @@ namespace boston_timing_system.Services
 
                     if (printDialog.PrintQueue == null)
                     {
-                        return (false, $"Gagal mengakses antrean printer: {ex.Message}");
+                        return (false, $"Failed to access printer queue: {ex.Message}");
                     }
                 }
 
                 if (printDialog.PrintQueue == null)
                 {
-                    return (false, "Printer tidak ditemukan. Pastikan printer terhubung atau default printer Windows telah diatur.");
+                    return (false, "Printer not found. Ensure the printer is connected or Windows default printer is set.");
                 }
 
                 // Measure and arrange visual if it is not currently rendered in visual tree
@@ -758,7 +770,7 @@ namespace boston_timing_system.Services
             return g;
         }
 
-        private static void AddGridCell(Grid grid, string text, int row, int col, FontWeight weight, TextAlignment align, double fontSize, bool trim = false)
+        private static void AddGridCell(Grid grid, string text, int row, int col, FontWeight weight, TextAlignment align, double fontSize, bool trim = false, bool wrap = false)
         {
             var tb = new TextBlock
             {
@@ -769,7 +781,11 @@ namespace boston_timing_system.Services
                 FontWeight = weight,
                 TextAlignment = align
             };
-            if (trim)
+            if (wrap)
+            {
+                tb.TextWrapping = TextWrapping.Wrap;
+            }
+            else if (trim)
             {
                 tb.TextTrimming = TextTrimming.CharacterEllipsis;
             }
@@ -791,6 +807,70 @@ namespace boston_timing_system.Services
         {
             if (text.Length > width) return text.Substring(0, width);
             return text.PadRight(width);
+        }
+
+        private static List<string> WrapText(string text, int maxLineLength)
+        {
+            var lines = new List<string>();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                lines.Add(string.Empty);
+                return lines;
+            }
+
+            var words = text.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            var currentLine = new StringBuilder();
+
+            foreach (var word in words)
+            {
+                if (word.Length > maxLineLength)
+                {
+                    if (currentLine.Length > 0)
+                    {
+                        lines.Add(currentLine.ToString());
+                        currentLine.Clear();
+                    }
+
+                    int offset = 0;
+                    while (offset < word.Length)
+                    {
+                        int chunk = Math.Min(maxLineLength, word.Length - offset);
+                        string piece = word.Substring(offset, chunk);
+                        offset += chunk;
+                        if (offset < word.Length)
+                        {
+                            lines.Add(piece);
+                        }
+                        else
+                        {
+                            currentLine.Append(piece);
+                        }
+                    }
+                    continue;
+                }
+
+                if (currentLine.Length == 0)
+                {
+                    currentLine.Append(word);
+                }
+                else if (currentLine.Length + 1 + word.Length <= maxLineLength)
+                {
+                    currentLine.Append(' ').Append(word);
+                }
+                else
+                {
+                    lines.Add(currentLine.ToString());
+                    currentLine.Clear();
+                    currentLine.Append(word);
+                }
+            }
+
+            if (currentLine.Length > 0)
+            {
+                lines.Add(currentLine.ToString());
+            }
+
+            return lines;
         }
     }
 }

@@ -98,9 +98,9 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="CETAK STRUK HASIL BALAPAN" 
+                    <TextBlock Text="PRINT RACE RESULT SLIP" 
                                FontSize="16" FontWeight="Bold" Foreground="#0F172A"/>
-                    <TextBlock Text="Cetak struk resmi hasil balapan saat ini ke printer" 
+                    <TextBlock Text="Print official race results slip to thermal printer" 
                                FontSize="12" Foreground="#64748B" Margin="0,3,0,0"/>
                 </StackPanel>
                 <Border Grid.Column="1" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="5" Padding="10,5" VerticalAlignment="Center">
@@ -126,7 +126,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="PRATINJAU STRUK (58MM)" 
+                    <TextBlock Grid.Row="0" Text="RECEIPT PREVIEW (58MM)" 
                                FontSize="11" FontWeight="Bold" Foreground="#475569" 
                                Margin="0,0,0,8" HorizontalAlignment="Center"/>
 
@@ -165,31 +165,31 @@
                     </Grid.RowDefinitions>
 
                     <!-- Section Title -->
-                    <TextBlock Grid.Row="0" Text="Pengaturan Pencetakan" 
+                    <TextBlock Grid.Row="0" Text="Print Settings" 
                                FontSize="14" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,12"/>
 
                     <!-- Printer Selection -->
                     <StackPanel Grid.Row="1" Margin="0,0,0,14">
-                        <TextBlock Text="Pilih Printer Thermal 58mm:" 
+                        <TextBlock Text="Select 58mm Thermal Printer:" 
                                    FontSize="12" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,6"/>
                         <ComboBox x:Name="cmbPrinters" Height="38" FontSize="13" 
                                   Padding="8,6" Background="#FFFFFF" BorderBrush="#CBD5E1" 
                                   SelectionChanged="CmbPrinters_SelectionChanged"/>
                         
-                        <TextBlock x:Name="txtPrinterStatus" Text="Mendeteksi printer..." 
+                        <TextBlock x:Name="txtPrinterStatus" Text="Detecting printers..." 
                                    FontSize="11" Foreground="#16A34A" FontWeight="Medium" Margin="0,6,0,0"/>
                     </StackPanel>
 
                     <!-- Race Info Summary Box -->
                     <Border Grid.Row="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,14">
                         <StackPanel>
-                            <TextBlock Text="Informasi Hasil Yang Dicetak" FontSize="11.5" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,6"/>
+                            <TextBlock Text="Printed Results Information" FontSize="11.5" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,6"/>
                             <Grid Margin="0,2">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="90"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Kompetisi:" FontSize="11.5" Foreground="#64748B"/>
+                                <TextBlock Grid.Column="0" Text="Competition:" FontSize="11.5" Foreground="#64748B"/>
                                 <TextBlock x:Name="txtInfoMeet" Grid.Column="1" Text="Swimming Competition" FontSize="11.5" FontWeight="SemiBold" Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
                             </Grid>
                             <Grid Margin="0,2">
@@ -205,8 +205,8 @@
                                     <ColumnDefinition Width="90"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Lebar Kertas:" FontSize="11.5" Foreground="#64748B"/>
-                                <TextBlock Grid.Column="1" Text="58 mm (Roll Thermal Standar)" FontSize="11.5" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                <TextBlock Grid.Column="0" Text="Paper Width:" FontSize="11.5" Foreground="#64748B"/>
+                                <TextBlock Grid.Column="1" Text="58 mm (Standard POS Thermal Roll)" FontSize="11.5" FontWeight="SemiBold" Foreground="#0F172A"/>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -216,7 +216,7 @@
                         <!-- Status Notification -->
                         <Border x:Name="bdFeedback" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" 
                                 CornerRadius="5" Padding="10,8" Visibility="Collapsed">
-                            <TextBlock x:Name="txtFeedback" Text="Struk berhasil dicetak!" 
+                            <TextBlock x:Name="txtFeedback" Text="Receipt printed successfully!" 
                                        FontSize="12" FontWeight="SemiBold" Foreground="#166534" 
                                        TextWrapping="Wrap"/>
                         </Border>

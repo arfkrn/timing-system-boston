@@ -171,6 +171,70 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- TreeViewItem Style with custom highlight & padding -->
+        <Style x:Key="EventHeatTreeViewItemStyle" TargetType="{x:Type TreeViewItem}">
+            <Setter Property="IsExpanded" Value="True" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Margin" Value="0,1.5" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TreeViewItem}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition />
+                            </Grid.RowDefinitions>
+                            <Border x:Name="Bd"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="1"
+                                    CornerRadius="5"
+                                    Padding="{TemplateBinding Padding}"
+                                    Margin="0,1"
+                                    Cursor="Hand"
+                                    SnapsToDevicePixels="True">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="Expander" 
+                                                  Style="{StaticResource ExpandCollapseToggleStyle}" 
+                                                  IsChecked="{Binding Path=IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" 
+                                                  ClickMode="Press"
+                                                  Cursor="Hand"/>
+                                    <ContentPresenter x:Name="PART_Header" 
+                                                      Grid.Column="1" 
+                                                      ContentSource="Header" 
+                                                      HorizontalAlignment="Stretch" 
+                                                      VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+                            <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Margin="16,0,0,0"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" SourceName="Bd" Value="True"/>
+                                    <Condition Property="IsSelected" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bd" Property="Background" Value="#F1F5F9"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#E2E8F0"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#0284C7"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#0369A1"/>
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="18">
@@ -200,31 +264,90 @@
                                FontSize="17" FontWeight="Bold" Foreground="#0F172A" Margin="0,2,0,0"/>
                 </StackPanel>
 
-                <!-- Action Buttons -->
+                <!-- Action Buttons: Grouped by Functionality -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="btnOpenJson" Content="Open Meet (.json)" 
-                            Style="{StaticResource HeaderButtonStyle}" 
-                            Background="#4F46E5" Margin="0,0,8,0" 
-                            Click="BtnOpenJson_Click"
-                            ToolTip="Buka file project lomba dari file JSON/BTS"/>
-                    <Button x:Name="btnSaveJson" Content="Save Meet (.json)" 
-                            Style="{StaticResource HeaderButtonStyle}" 
-                            Background="#2563EB" Margin="0,0,8,0" 
-                            Click="BtnSaveJson_Click"
-                            ToolTip="Simpan seluruh susunan lomba &amp; hasil ke file JSON/BTS"/>
-                    <Button x:Name="btnDownloadTemplate" Content="Download Template" 
-                            Style="{StaticResource HeaderButtonStyle}" 
-                            Background="#475569" Margin="0,0,8,0" 
-                            Click="BtnDownloadTemplate_Click"/>
-                    <Button x:Name="btnImportExcel" Content="Import Event" 
-                            Style="{StaticResource HeaderButtonStyle}" 
-                            Background="#0D9488" Margin="0,0,8,0" 
-                            Click="BtnImportExcel_Click"
-                            ToolTip="Impor data event baru dari file Excel (akan menimpa data lomba saat ini)"/>
-                    <Button x:Name="btnExportResults" Content="Export Results" 
-                            Style="{StaticResource HeaderButtonStyle}" 
-                            Background="#D97706" 
-                            Click="BtnExportResults_Click"/>
+                    
+                    <!-- GROUP 1: EXCEL OPERATIONS (Operational Flow: Template -> Import -> Export) -->
+                    <Border Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Padding="4,3" Margin="0,0,10,0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Download Template -->
+                            <Button x:Name="btnDownloadTemplate" 
+                                    Style="{StaticResource HeaderButtonStyle}" 
+                                    Background="#FFFFFF" Foreground="#334155"
+                                    BorderThickness="1" BorderBrush="#CBD5E1"
+                                    Margin="0,0,4,0" Padding="10,6" FontSize="11.5"
+                                    Click="BtnDownloadTemplate_Click"
+                                    ToolTip="Download blank Excel spreadsheet template for setting up events &amp; athletes">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="📋" FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Template" FontWeight="Bold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Import Excel (Primary Action) -->
+                            <Button x:Name="btnImportExcel" 
+                                    Style="{StaticResource HeaderButtonStyle}" 
+                                    Background="#059669" Foreground="#FFFFFF"
+                                    Margin="0,0,4,0" Padding="12,6" FontSize="11.5"
+                                    Click="BtnImportExcel_Click"
+                                    ToolTip="Import events and start list from Excel file (replaces current meet)">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="📥" FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Import Excel" FontWeight="Bold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Export Results -->
+                            <Button x:Name="btnExportResults" 
+                                    Style="{StaticResource HeaderButtonStyle}" 
+                                    Background="#FFFFFF" Foreground="#047857"
+                                    BorderThickness="1" BorderBrush="#A7F3D0"
+                                    Padding="11,6" FontSize="11.5"
+                                    Click="BtnExportResults_Click"
+                                    ToolTip="Export race timing results to Excel workbook">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="📊" FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Export Results" FontWeight="Bold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- DIVIDER -->
+                    <Rectangle Width="1" Fill="#CBD5E1" Height="26" Margin="0,0,10,0" VerticalAlignment="Center"/>
+
+                    <!-- GROUP 2: PROJECT BACKUP (System Level .json/.bts) -->
+                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="4,3">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Open Project -->
+                            <Button x:Name="btnOpenJson" 
+                                    Style="{StaticResource HeaderButtonStyle}" 
+                                    Background="#FFFFFF" Foreground="#1E40AF"
+                                    BorderThickness="1" BorderBrush="#BFDBFE"
+                                    Margin="0,0,4,0" Padding="10,6" FontSize="11.5"
+                                    Click="BtnOpenJson_Click"
+                                    ToolTip="Open saved meet project file (.bts / .json)">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="📂" FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Open Meet" FontWeight="Bold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- Save Project -->
+                            <Button x:Name="btnSaveJson" 
+                                    Style="{StaticResource HeaderButtonStyle}" 
+                                    Background="#2563EB" Foreground="#FFFFFF"
+                                    Padding="11,6" FontSize="11.5"
+                                    Click="BtnSaveJson_Click"
+                                    ToolTip="Save all events, heats, athletes, and timing results to project file (.bts / .json)">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="💾" FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Save Meet" FontWeight="Bold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </Grid>
         </Border>
@@ -261,96 +384,52 @@
                     <TextBlock Grid.Row="0" Text="LIST OF EVENT &amp; HEAT NUMBERS" 
                                FontSize="11" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,8"/>
 
-                    <!-- Action buttons: + Event, + Heat, Delete -->
+                    <!-- Action buttons: + Event, + Heat, Delete Selected -->
                     <Grid Grid.Row="1" Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="btnAddEvent" Content="New Event" Grid.Column="0"
+                        <Button x:Name="btnAddEvent" Grid.Column="0"
                                 Style="{StaticResource ActionMiniButtonStyle}" Background="#0284C7" Margin="0,0,4,0"
-                                ToolTip="Tambah Event Baru" Click="BtnAddEvent_Click"/>
-                        <Button x:Name="btnAddHeat" Content="New Heat" Grid.Column="1"
+                                ToolTip="Create a new competition event" Click="BtnAddEvent_Click">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="➕ " FontSize="10" VerticalAlignment="Center"/>
+                                <TextBlock Text="New Event" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="btnAddHeat" Grid.Column="1"
                                 Style="{StaticResource ActionMiniButtonStyle}" Background="#0D9488" Margin="2,0,4,0"
-                                ToolTip="Tambah Heat pada Event yang dipilih" Click="BtnAddHeat_Click"/>
-                        <Button x:Name="btnDeleteSelected" Content="Delete" Grid.Column="2"
+                                ToolTip="Add a new heat to the selected event" Click="BtnAddHeat_Click">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="➕ " FontSize="10" VerticalAlignment="Center"/>
+                                <TextBlock Text="New Heat" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="btnDeleteSelected" Grid.Column="2"
                                 Style="{StaticResource ActionMiniButtonStyle}" Background="#E11D48" Padding="10,5"
-                                ToolTip="Hapus Event atau Heat terpilih" Click="BtnDeleteSelected_Click"/>
+                                ToolTip="Delete the currently selected Event or Heat" Click="BtnDeleteSelected_Click">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="🗑️ " FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock Text="Delete Selected" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                     </Grid>
 
                     <TreeView x:Name="tvEvents" Grid.Row="2" Background="#FFFFFF" BorderThickness="0"
+                              ItemContainerStyle="{StaticResource EventHeatTreeViewItemStyle}"
                               SelectedItemChanged="TvEvents_SelectedItemChanged">
-                        <TreeView.ItemContainerStyle>
-                            <Style TargetType="{x:Type TreeViewItem}">
-                                <Setter Property="IsExpanded" Value="True" />
-                                <Setter Property="Cursor" Value="Hand" />
-                                <Setter Property="Padding" Value="4,3" />
-                                <Setter Property="Margin" Value="0,1" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="{x:Type TreeViewItem}">
-                                            <Grid>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto"/>
-                                                    <RowDefinition />
-                                                </Grid.RowDefinitions>
-                                                <Border x:Name="Bd"
-                                                        Background="Transparent"
-                                                        BorderBrush="Transparent"
-                                                        BorderThickness="1"
-                                                        CornerRadius="4"
-                                                        Padding="{TemplateBinding Padding}"
-                                                        Margin="0,1"
-                                                        Cursor="Hand">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="18"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <ToggleButton x:Name="Expander" 
-                                                                      Style="{StaticResource ExpandCollapseToggleStyle}" 
-                                                                      IsChecked="{Binding Path=IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" 
-                                                                      ClickMode="Press"
-                                                                      Cursor="Hand"/>
-                                                        <ContentPresenter x:Name="PART_Header" 
-                                                                          Grid.Column="1" 
-                                                                          ContentSource="Header" 
-                                                                          HorizontalAlignment="Stretch" 
-                                                                          VerticalAlignment="Center"/>
-                                                    </Grid>
-                                                </Border>
-                                                <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Margin="18,0,0,0"/>
-                                            </Grid>
-                                            <ControlTemplate.Triggers>
-                                                <MultiTrigger>
-                                                    <MultiTrigger.Conditions>
-                                                        <Condition Property="IsMouseOver" SourceName="Bd" Value="True"/>
-                                                        <Condition Property="IsSelected" Value="False"/>
-                                                    </MultiTrigger.Conditions>
-                                                    <Setter TargetName="Bd" Property="Background" Value="#F1F5F9"/>
-                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#E2E8F0"/>
-                                                </MultiTrigger>
-                                                <Trigger Property="IsSelected" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="#0284C7"/>
-                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#0369A1"/>
-                                                </Trigger>
-                                                <Trigger Property="HasItems" Value="False">
-                                                    <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </TreeView.ItemContainerStyle>
                         <TreeView.ItemTemplate>
-                            <HierarchicalDataTemplate DataType="{x:Type models:RaceEventModel}" ItemsSource="{Binding Heats}">
+                            <HierarchicalDataTemplate DataType="{x:Type models:RaceEventModel}" 
+                                                      ItemsSource="{Binding Heats}"
+                                                      ItemContainerStyle="{StaticResource EventHeatTreeViewItemStyle}">
                                 <StackPanel Orientation="Horizontal" Margin="2">
-                                    <TextBlock Text="{Binding DisplayTitle}" FontWeight="Bold" FontSize="13">
+                                    <TextBlock Text="🏊 " FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding DisplayTitle}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="#0284C7" />
+                                                <Setter Property="Foreground" Value="#0369A1" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True">
                                                         <Setter Property="Foreground" Value="#FFFFFF" />
@@ -363,7 +442,8 @@
                                 <HierarchicalDataTemplate.ItemTemplate>
                                     <DataTemplate DataType="{x:Type models:HeatModel}">
                                         <StackPanel Orientation="Horizontal" Margin="2">
-                                            <TextBlock Text="{Binding DisplayTitle}" FontWeight="SemiBold" FontSize="12.5">
+                                            <TextBlock Text="⏱ " FontSize="11" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding DisplayTitle}" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Foreground" Value="#0F172A" />
@@ -375,23 +455,16 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
-                                            <TextBlock Text=" (Completed)" FontWeight="Bold" FontSize="11" Margin="4,0,0,0">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="#16A34A" />
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsCompleted}" Value="True">
-                                                                <Setter Property="Visibility" Value="Visible" />
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True">
-                                                                <Setter Property="Foreground" Value="#DCFCE7" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
+                                            <Border x:Name="bdCompletedBadge" CornerRadius="3" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" 
+                                                    Padding="5,1" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                                <TextBlock Text="Completed" FontWeight="Bold" FontSize="10" Foreground="#166534"/>
+                                            </Border>
                                         </StackPanel>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                                                <Setter TargetName="bdCompletedBadge" Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </HierarchicalDataTemplate.ItemTemplate>
                             </HierarchicalDataTemplate>
@@ -452,13 +525,23 @@
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="btnAddNewOwsSwimmer" Content="Add New Athlete"
+                            <Button x:Name="btnAddNewOwsSwimmer"
                                     Style="{StaticResource ActionMiniButtonStyle}" Background="#0284C7"
                                     Padding="10,5" Margin="0,0,8,0" Visibility="Collapsed"
-                                    Click="BtnAddNewOwsSwimmer_Click" ToolTip="Add a new athlete to this heat"/>
-                            <Button x:Name="btnClearHeat" Content="Empty Heat"
+                                    Click="BtnAddNewOwsSwimmer_Click" ToolTip="Add a new athlete to this heat">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="➕ " FontSize="10" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Add Athlete" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="btnClearHeat"
                                     Style="{StaticResource CancelOutlinedButtonStyle}" Padding="10,5" FontSize="11.5"
-                                    Click="BtnClearHeat_Click" ToolTip="Clear all athletes from this heat"/>
+                                    Click="BtnClearHeat_Click" ToolTip="Clear/empty all athletes from this heat">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🧹 " FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Empty Heat" FontWeight="Bold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </Grid>
 
@@ -680,13 +763,14 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
-                            <!-- Action: Clear Lane -->
-                            <DataGridTemplateColumn Header="ACTION" Width="65">
+                            <!-- Action: Clear/Remove -->
+                            <DataGridTemplateColumn x:Name="colAction" Header="ACTION" Width="75">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <Button Content="Clear" Style="{StaticResource ClearLaneButtonStyle}"
+                                        <Button x:Name="btnRowAction" Content="Clear" Style="{StaticResource ClearLaneButtonStyle}"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                Click="BtnClearLane_Click" ToolTip="Kosongkan lintasan ini"/>
+                                                Padding="8,3"
+                                                Click="BtnClearLane_Click" ToolTip="Reset this lane or remove participant"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>

@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Scan QR Code - Koneksi Mobile Wasit &amp; Starter" 
+        Title="Scan QR Code - Referee &amp; Starter Mobile Connection" 
         Height="650" Width="490"
         MinHeight="580" MinWidth="440"
         Background="#F8FAFC"
@@ -66,7 +66,7 @@
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="SCAN QR CODE - MOBILE CONNECT" 
                                FontSize="14.5" FontWeight="Bold" Foreground="#0F172A"/>
-                    <TextBlock x:Name="txtQrSubtitle" Text="Scan dengan HP untuk menghubungkan Wasit, Starter, atau Chief" 
+                    <TextBlock x:Name="txtQrSubtitle" Text="Scan with mobile phone to connect Referee, Starter, or Chief" 
                                FontSize="11.5" Foreground="#64748B" Margin="0,3,0,0"/>
                 </StackPanel>
             </Grid>
@@ -89,8 +89,8 @@
                         <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270" Color="#000000" Opacity="0.08"/>
                     </Border.Effect>
                     <Image x:Name="imgQrCode" Width="280" Height="280" 
-                           RenderOptions.BitmapScalingMode="NearestNeighbor" 
-                           SnapsToDevicePixels="True"/>
+                            RenderOptions.BitmapScalingMode="NearestNeighbor" 
+                            SnapsToDevicePixels="True"/>
                 </Border>
 
                 <!-- CONNECTION INFO SUMMARY -->
@@ -120,7 +120,7 @@
         <!-- FOOTER BAR -->
         <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12,10">
             <Grid>
-                <Button Content="TUTUP" 
+                <Button Content="CLOSE" 
                         Style="{StaticResource ActionButtonStyle}" 
                         Width="100" HorizontalAlignment="Right"
                         Click="BtnClose_Click"/>

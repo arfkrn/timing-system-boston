@@ -33,6 +33,11 @@ namespace boston_timing_system.Views
 
             ConfigureModeUi();
             BindMeetData();
+
+            Loaded += (s, e) =>
+            {
+                SyncTreeSelectionVisual();
+            };
         }
 
         private void ConfigureModeUi()
@@ -70,6 +75,11 @@ namespace boston_timing_system.Views
             {
                 SelectFirstAvailable();
             }
+
+            if (IsLoaded)
+            {
+                SyncTreeSelectionVisual();
+            }
         }
 
         private void SelectHeat(HeatModel heat, RaceEventModel parentEvent)
@@ -85,6 +95,8 @@ namespace boston_timing_system.Views
                 txtEventNumber.IsEnabled = true;
                 txtEventName.IsEnabled = true;
                 btnClearHeat.IsEnabled = true;
+
+                btnDeleteSelected.ToolTip = $"Delete {heat.DisplayTitle} from {parentEvent.DisplayTitle}";
 
                 txtSelectedHeatTitle.Text = $"{heat.DisplayTitle}";
                 UpdateSelectedHeatSubtitle();
@@ -110,6 +122,8 @@ namespace boston_timing_system.Views
                 txtEventNumber.IsEnabled = true;
                 txtEventName.IsEnabled = true;
 
+                btnDeleteSelected.ToolTip = $"Delete {raceEvent.DisplayTitle} (entire event)";
+
                 if (_selectedHeat != null)
                 {
                     btnClearHeat.IsEnabled = true;
@@ -129,6 +143,80 @@ namespace boston_timing_system.Views
             {
                 _isUpdatingUi = false;
             }
+        }
+
+        private void SyncTreeSelectionVisual()
+        {
+            if (tvEvents == null) return;
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            {
+                try
+                {
+                    if (_selectedEvent == null) return;
+
+                    tvEvents.UpdateLayout();
+                    var eventItem = tvEvents.ItemContainerGenerator.ContainerFromItem(_selectedEvent) as TreeViewItem;
+                    if (eventItem == null) return;
+
+                    eventItem.IsExpanded = true;
+                    eventItem.UpdateLayout();
+
+                    if (_selectedHeat != null)
+                    {
+                        var heatItem = eventItem.ItemContainerGenerator.ContainerFromItem(_selectedHeat) as TreeViewItem;
+                        if (heatItem != null)
+                        {
+                            _isUpdatingUi = true;
+                            try
+                            {
+                                heatItem.IsSelected = true;
+                                heatItem.BringIntoView();
+                            }
+                            finally
+                            {
+                                _isUpdatingUi = false;
+                            }
+                            return;
+                        }
+
+                        // If heat container generation needs another dispatcher frame
+                        eventItem.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                        {
+                            var hItem = eventItem.ItemContainerGenerator.ContainerFromItem(_selectedHeat) as TreeViewItem;
+                            if (hItem != null)
+                            {
+                                _isUpdatingUi = true;
+                                try
+                                {
+                                    hItem.IsSelected = true;
+                                    hItem.BringIntoView();
+                                }
+                                finally
+                                {
+                                    _isUpdatingUi = false;
+                                }
+                            }
+                        }));
+                        return;
+                    }
+
+                    _isUpdatingUi = true;
+                    try
+                    {
+                        eventItem.IsSelected = true;
+                        eventItem.BringIntoView();
+                    }
+                    finally
+                    {
+                        _isUpdatingUi = false;
+                    }
+                }
+                catch
+                {
+                    // Defensive: avoid any crashes on UI visual sync
+                }
+            }));
         }
 
         private void SelectFirstAvailable()
@@ -193,8 +281,11 @@ namespace boston_timing_system.Views
 
         private void TvEvents_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
+            if (_isUpdatingUi) return;
+
             if (e.NewValue is HeatModel heat)
             {
+                if (ReferenceEquals(heat, _selectedHeat)) return;
                 var parentEvent = Meet.Events.FirstOrDefault(ev => ev.Heats.Contains(heat));
                 if (parentEvent != null)
                 {
@@ -203,6 +294,7 @@ namespace boston_timing_system.Views
             }
             else if (e.NewValue is RaceEventModel raceEvent)
             {
+                if (ReferenceEquals(raceEvent, _selectedEvent) && _selectedHeat == null) return;
                 SelectEventOnly(raceEvent);
             }
         }
@@ -216,6 +308,7 @@ namespace boston_timing_system.Views
                 newEvent.Heats[0].Lanes.Clear();
             }
             SelectHeat(newEvent.Heats[0], newEvent);
+            SyncTreeSelectionVisual();
         }
 
         private void BtnAddHeat_Click(object sender, RoutedEventArgs e)
@@ -228,7 +321,7 @@ namespace boston_timing_system.Views
                 }
                 else
                 {
-                    MessageBox.Show("Please create an event first using the 'New Event' button.", "Informasi", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Please create an event first using the 'New Event' button.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
             }
@@ -239,6 +332,7 @@ namespace boston_timing_system.Views
                 newHeat.Lanes.Clear();
             }
             SelectHeat(newHeat, _selectedEvent);
+            SyncTreeSelectionVisual();
         }
 
         private void BtnAddNewOwsSwimmer_Click(object sender, RoutedEventArgs e)
@@ -293,6 +387,7 @@ namespace boston_timing_system.Views
                         {
                             Meet.RemoveEvent(parentEvent);
                             SelectFirstAvailable();
+                            SyncTreeSelectionVisual();
                         }
                     }
                     else
@@ -314,6 +409,7 @@ namespace boston_timing_system.Views
                             {
                                 SelectEventOnly(parentEvent);
                             }
+                            SyncTreeSelectionVisual();
                         }
                     }
                 }
@@ -330,11 +426,12 @@ namespace boston_timing_system.Views
                 {
                     Meet.RemoveEvent(raceEvent);
                     SelectFirstAvailable();
+                    SyncTreeSelectionVisual();
                 }
             }
             else
             {
-                MessageBox.Show("Please select an Event or Heat from the list on the left to delete.", "Pilih Item", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("Please select an Event or Heat from the list on the left to delete.", "Select Item", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -373,7 +470,7 @@ namespace boston_timing_system.Views
 
             var result = MessageBox.Show(
                 confirmMsg,
-                "Konfirmasi",
+                "Confirmation",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
 
@@ -499,14 +596,14 @@ namespace boston_timing_system.Views
                     return;
                 }
 
-                // Konfirmasi timpa data jika sudah ada data meet yang aktif
+                // Confirm data overwrite if meet data already exists
                 bool hadExistingEvents = Meet.Events.Count > 0;
                 if (hadExistingEvents)
                 {
                     var confirmResult = MessageBox.Show(
-                        $"Mengimpor file ini akan MENIMPA dan MENGHAPUS seluruh data event, heat, dan perenang yang ada saat ini ({Meet.Events.Count} Event).\n\n" +
-                        $"Aplikasi hanya mendukung 1 meet per sesi.\n\nApakah Anda yakin ingin melanjutkan dan menimpa meet saat ini?",
-                        "Konfirmasi Timpa Data Meet",
+                        $"Importing this file will OVERWRITE and REMOVE all current event, heat, and swimmer data ({Meet.Events.Count} Events).\n\n" +
+                        $"The application only supports 1 meet per session.\n\nAre you sure you want to proceed and overwrite the current meet?",
+                        "Confirm Overwrite Meet Data",
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Warning);
 
@@ -527,15 +624,15 @@ namespace boston_timing_system.Views
                     .SelectMany(ev => ev.Heats)
                     .SelectMany(h => h.Lanes)
                     .Count(l => !string.IsNullOrWhiteSpace(l.SwimmerName));
-                string participantLabel = _timingMode == TimingMode.OpenWater ? "peserta BIB" : "perenang";
+                string participantLabel = _timingMode == TimingMode.OpenWater ? "BIB participants" : "swimmers";
 
                 string successMessage = hadExistingEvents
-                    ? $"Data meet lama berhasil ditimpa!\n\nBerhasil mengimpor {Meet.Events.Count} Event dan {totalParticipants} {participantLabel} dari file:\n{fileName}"
-                    : $"Start list imported successfully!\n\nBerhasil mengimpor {Meet.Events.Count} Event dan {totalParticipants} {participantLabel}.";
+                    ? $"Previous meet data successfully overwritten!\n\nSuccessfully imported {Meet.Events.Count} Events and {totalParticipants} {participantLabel} from file:\n{fileName}"
+                    : $"Start list imported successfully!\n\nSuccessfully imported {Meet.Events.Count} Events and {totalParticipants} {participantLabel}.";
 
                 MessageBox.Show(
                     successMessage,
-                    hadExistingEvents ? "Import Berhasil (Meet Ditimpa)" : "Import Berhasil",
+                    hadExistingEvents ? "Import Successful (Meet Overwritten)" : "Import Successful",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
@@ -683,16 +780,16 @@ namespace boston_timing_system.Views
                 {
                     await _persistenceService.SaveMeetToFileAsync(Meet, _timingMode, dialog.FileName);
                     MessageBox.Show(
-                        $"Meet '{Meet.MeetName}' berhasil disimpan ke:\n{dialog.FileName}",
-                        "Simpan Meet Berhasil",
+                        $"Meet '{Meet.MeetName}' successfully saved to:\n{dialog.FileName}",
+                        "Save Meet Successful",
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show(
-                        $"Gagal menyimpan file meet:\n{ex.Message}",
-                        "Simpan Meet Gagal",
+                        $"Failed to save meet file:\n{ex.Message}",
+                        "Save Meet Failed",
                         MessageBoxButton.OK,
                         MessageBoxImage.Error);
                 }
@@ -717,9 +814,9 @@ namespace boston_timing_system.Views
                 if (Meet.Events.Count > 0)
                 {
                     var confirmResult = MessageBox.Show(
-                        $"Membuka project baru akan MENIMPA dan MENGHAPUS seluruh data event, heat, dan perenang yang ada saat ini ({Meet.Events.Count} Event).\n\n" +
-                        $"Aplikasi hanya mendukung 1 meet per sesi.\n\nApakah Anda yakin ingin melanjutkan dan menimpa meet saat ini?",
-                        "Konfirmasi Buka Project (Timpa Data)",
+                        $"Opening a new project will OVERWRITE and REMOVE all current event, heat, and swimmer data ({Meet.Events.Count} Events).\n\n" +
+                        $"The application only supports 1 meet per session.\n\nAre you sure you want to proceed and overwrite the current meet?",
+                        "Confirm Open Project (Overwrite Data)",
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Warning);
 
@@ -740,16 +837,16 @@ namespace boston_timing_system.Views
                         txtMeetName.Text = Meet.MeetName;
                         BindMeetData();
                         MessageBox.Show(
-                            $"Data meet lama berhasil ditimpa!\n\nMeet '{Meet.MeetName}' berhasil dimuat ({Meet.Events.Count} Events).",
-                            "Buka Meet Berhasil",
+                            $"Previous meet data successfully overwritten!\n\nMeet '{Meet.MeetName}' loaded successfully ({Meet.Events.Count} Events).",
+                            "Open Meet Successful",
                             MessageBoxButton.OK,
                             MessageBoxImage.Information);
                     }
                     else
                     {
                         MessageBox.Show(
-                            "Format file tidak valid atau data meet kosong.",
-                            "Gagal Memuat Meet",
+                            "Invalid file format or meet data is empty.",
+                            "Failed to Load Meet",
                             MessageBoxButton.OK,
                             MessageBoxImage.Warning);
                     }
@@ -757,8 +854,8 @@ namespace boston_timing_system.Views
                 catch (Exception ex)
                 {
                     MessageBox.Show(
-                        $"Gagal membuka file meet:\n{ex.Message}",
-                        "Error Buka Meet",
+                        $"Failed to open meet file:\n{ex.Message}",
+                        "Error Opening Meet",
                         MessageBoxButton.OK,
                         MessageBoxImage.Error);
                 }

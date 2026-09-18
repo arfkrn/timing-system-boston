@@ -30,11 +30,11 @@ namespace boston_timing_system.Views
 
             if (_timingMode == TimingMode.OpenWater)
             {
-                txtQrSubtitle.Text = "Scan dengan HP untuk menghubungkan Wasit Finis (OWS) atau Starter (Chief tidak tersedia di OWS)";
+                txtQrSubtitle.Text = "Scan with mobile phone to connect Finish Referee (OWS) or Starter (Chief not available in OWS)";
             }
             else
             {
-                txtQrSubtitle.Text = "Scan dengan HP untuk menghubungkan Wasit, Starter, atau Chief";
+                txtQrSubtitle.Text = "Scan with mobile phone to connect Referee, Starter, or Chief";
             }
 
             Loaded += (s, e) => UpdateQrCode();
@@ -53,7 +53,7 @@ namespace boston_timing_system.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Gagal membuat QR Code: {ex.Message}", "QR Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Failed to generate QR Code: {ex.Message}", "QR Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

@@ -24,8 +24,8 @@ namespace boston_timing_system.Views
         public int HeatsWithResults => Event.Heats.Count(h => h.Lanes.Any(MeetExportOptions.HasResult));
         public int ResultsCount { get; }
         public string ResultCountText => ResultsCount > 0 
-            ? $"({TotalHeats} Heat | {ResultsCount} hasil tercatat)" 
-            : $"({TotalHeats} Heat | Belum ada hasil)";
+            ? $"({TotalHeats} Heat | {ResultsCount} results recorded)" 
+            : $"({TotalHeats} Heat | No results yet)";
 
         public Brush ResultStatusBrush => ResultsCount > 0
             ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"))
@@ -142,8 +142,8 @@ namespace boston_timing_system.Views
 
                 if (selectedEventNumbers.Count == 0)
                 {
-                    MessageBox.Show("Silakan centang minimal satu nomor lomba (event) untuk diekspor.", 
-                        "Peringatan", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show("Please check at least one race event to export.", 
+                        "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -170,7 +170,7 @@ namespace boston_timing_system.Views
                 {
                     Filter = "Excel Workbook (*.xlsx)|*.xlsx",
                     FileName = suggestedFileName,
-                    Title = "Simpan Hasil Balapan ke File Excel"
+                    Title = "Save Race Results to Excel File"
                 };
 
                 if (saveDialog.ShowDialog() == true)
@@ -190,8 +190,8 @@ namespace boston_timing_system.Views
                         ExportSuccessful = true;
                         ExportedFilePath = saveDialog.FileName;
 
-                        MessageBox.Show($"Hasil balapan berhasil diekspor ke file Excel:\n\n{saveDialog.FileName}", 
-                            "Ekspor Berhasil", MessageBoxButton.OK, MessageBoxImage.Information);
+                        MessageBox.Show($"Race results successfully exported to Excel file:\n\n{saveDialog.FileName}", 
+                            "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
 
                         DialogResult = true;
                         Close();
@@ -209,15 +209,15 @@ namespace boston_timing_system.Views
                 if (ex is IOException ioEx && ((ioEx.HResult & 0xFFFF) == 32 || (ioEx.HResult & 0xFFFF) == 33 || ioEx.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase) || ioEx.Message.Contains("digunakan oleh proses lain", StringComparison.OrdinalIgnoreCase)))
                 {
                     MessageBox.Show(
-                        "File Excel saat ini masih dibuka di program lain (misalnya Microsoft Excel).\n\nSilakan tutup file tersebut di Microsoft Excel terlebih dahulu, atau pilih nama file yang berbeda.",
-                        "File Excel Sedang Dibuka",
+                        "The Excel file is currently open in another program (such as Microsoft Excel).\n\nPlease close the file in Microsoft Excel first, or choose a different file name.",
+                        "Excel File Is Currently Open",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                 }
                 else
                 {
-                    MessageBox.Show($"Gagal mengekspor hasil ke Excel:\n\n{ex.Message}", 
-                        "Ekspor Gagal", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Failed to export results to Excel:\n\n{ex.Message}", 
+                        "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }

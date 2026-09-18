@@ -69,7 +69,7 @@ namespace boston_timing_system.Views
             {
                 cmbPrinters.Items.Add("Default Printer");
                 cmbPrinters.SelectedIndex = 0;
-                txtPrinterStatus.Text = "Menggunakan default printer sistem Windows.";
+                txtPrinterStatus.Text = "Using Windows system default printer.";
                 txtPrinterStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#475569"));
                 return;
             }
@@ -84,13 +84,13 @@ namespace boston_timing_system.Views
             if (!string.IsNullOrWhiteSpace(recommended) && cmbPrinters.Items.Contains(recommended))
             {
                 cmbPrinters.SelectedItem = recommended;
-                txtPrinterStatus.Text = $"Printer thermal terdeteksi: {recommended}";
+                txtPrinterStatus.Text = $"Thermal printer detected: {recommended}";
                 txtPrinterStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
             }
             else
             {
                 cmbPrinters.SelectedIndex = 0;
-                txtPrinterStatus.Text = $"Siap mencetak ke: {cmbPrinters.SelectedItem}";
+                txtPrinterStatus.Text = $"Ready to print to: {cmbPrinters.SelectedItem}";
                 txtPrinterStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#475569"));
             }
         }
@@ -102,12 +102,12 @@ namespace boston_timing_system.Views
                 string lower = selectedPrinter.ToLowerInvariant();
                 if (lower.Contains("58") || lower.Contains("pos") || lower.Contains("thermal") || lower.Contains("receipt"))
                 {
-                    txtPrinterStatus.Text = $"✓ Terpilih printer thermal: {selectedPrinter}";
+                    txtPrinterStatus.Text = $"✓ Selected thermal printer: {selectedPrinter}";
                     txtPrinterStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
                 }
                 else
                 {
-                    txtPrinterStatus.Text = $"Pencetak terpilih: {selectedPrinter}";
+                    txtPrinterStatus.Text = $"Selected printer: {selectedPrinter}";
                     txtPrinterStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#475569"));
                 }
             }
@@ -134,7 +134,7 @@ namespace boston_timing_system.Views
                     bdFeedback.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DCFCE7"));
                     bdFeedback.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#86EFAC"));
                     txtFeedback.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#166534"));
-                    txtFeedback.Text = $"BERHASIL: Struk hasil balapan berhasil dikirim ke printer [{selectedPrinter ?? "Default"}]!";
+                    txtFeedback.Text = $"SUCCESS: Race result slip sent to printer [{selectedPrinter ?? "Default"}]!";
                 }
                 else
                 {
@@ -142,7 +142,7 @@ namespace boston_timing_system.Views
                     bdFeedback.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEE2E2"));
                     bdFeedback.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FCA5A5"));
                     txtFeedback.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
-                    txtFeedback.Text = $"GAGAL MENCETAK: {result.Message}";
+                    txtFeedback.Text = $"FAILED TO PRINT: {result.Message}";
                 }
             }
             catch (Exception ex)
@@ -151,7 +151,7 @@ namespace boston_timing_system.Views
                 bdFeedback.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEE2E2"));
                 bdFeedback.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FCA5A5"));
                 txtFeedback.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
-                txtFeedback.Text = $"Terjadi kesalahan: {ex.Message}";
+                txtFeedback.Text = $"An error occurred: {ex.Message}";
             }
         }
 
@@ -164,7 +164,7 @@ namespace boston_timing_system.Views
                 bdFeedback.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EFF6FF"));
                 bdFeedback.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BFDBFE"));
                 txtFeedback.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E40AF"));
-                txtFeedback.Text = "Teks struk 58mm (32 kolom) berhasil disalin ke clipboard!";
+                txtFeedback.Text = "58mm receipt text (32 columns) copied to clipboard!";
             }
         }
 

@@ -166,7 +166,7 @@
                     <!-- Auto-Save Status Badge -->
                     <Border x:Name="bdrAutoSaveStatus" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" 
                             CornerRadius="4" Padding="8,3" Margin="0,0,8,0" VerticalAlignment="Center"
-                            ToolTip="Status auto-save penyimpanan persisten">
+                            ToolTip="Persistent auto-save status">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Ellipse x:Name="elpAutoSaveDot" Width="6" Height="6" Fill="#16A34A" Margin="0,0,5,0" VerticalAlignment="Center"/>
                             <TextBlock x:Name="txtAutoSaveStatus" Text="Auto-save ready" FontSize="11" FontWeight="SemiBold" 
@@ -196,7 +196,7 @@
                             BorderBrush="#3B82F6"
                             Cursor="Hand"
                             Click="BtnToggleTimingMode_Click"
-                            ToolTip="Klik untuk beralih mode (Swimming / Open Water Swimming)">
+                            ToolTip="Click to switch timing mode (Pool Swimming / Open Water Swimming)">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock x:Name="txtTimingModeText" Text="POOL SWIMMING" FontSize="12" FontWeight="Bold" Foreground="#1D4ED8" VerticalAlignment="Center"/>
                         </StackPanel>
@@ -231,89 +231,110 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- 1. EVENT INFO & STEPPER (Prev & Next Buttons Only, No Dropdown) -->
-                <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="4,0">
-                    <TextBlock Text="EVENT" FontSize="17" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,5" HorizontalAlignment="Center"/>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <Button x:Name="btnPrevEvent" Content="◀" 
-                                Style="{StaticResource HeaderOutlinedButtonStyle}"
-                                Padding="12,5" Margin="0,0,6,0" FontSize="12" FontWeight="Bold"
-                                Click="BtnPrevEvent_Click"
-                                ToolTip="Previous Event"/>
-                        <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" 
-                                CornerRadius="4" Padding="14,5" MinWidth="100">
-                            <TextBlock x:Name="txtCurrentEventDisplay" Text="Event #01" 
-                                       FontSize="13" FontWeight="Bold" Foreground="#0F172A"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <Button x:Name="btnNextEvent" Content="▶" 
-                                Style="{StaticResource HeaderOutlinedButtonStyle}"
-                                Padding="12,5" Margin="6,0,0,0" FontSize="12" FontWeight="Bold"
-                                Click="BtnNextEvent_Click"
-                                ToolTip="Next Event"/>
+                <Grid Grid.Column="0" Margin="4,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="EVENT" FontSize="19" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <Button x:Name="btnPrevEvent" Content="◀" 
+                                    Style="{StaticResource HeaderOutlinedButtonStyle}"
+                                    Padding="12,5" Margin="0,0,6,0" FontSize="13" FontWeight="Bold"
+                                    Click="BtnPrevEvent_Click"
+                                    ToolTip="Previous Event"/>
+                            <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" 
+                                    CornerRadius="4" Padding="14,5" MinWidth="110">
+                                <TextBlock x:Name="txtCurrentEventDisplay" Text="Event #01" 
+                                           FontSize="16" FontWeight="Bold" Foreground="#0F172A"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <Button x:Name="btnNextEvent" Content="▶" 
+                                    Style="{StaticResource HeaderOutlinedButtonStyle}"
+                                    Padding="12,5" Margin="6,0,0,0" FontSize="13" FontWeight="Bold"
+                                    Click="BtnNextEvent_Click"
+                                    ToolTip="Next Event"/>
+                        </StackPanel>
+                        <TextBlock x:Name="txtCurrentEventName" Text="50m Freestyle Men" 
+                                   FontSize="16" FontWeight="SemiBold" Foreground="#64748B" Margin="0,4,0,0"
+                                   HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="210"
+                                   ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
                     </StackPanel>
-                    <TextBlock x:Name="txtCurrentEventName" Text="50m Freestyle Men" 
-                               FontSize="15" FontWeight="SemiBold" Foreground="#64748B" Margin="0,4,0,0"
-                               HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="190"
-                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-                </StackPanel>
+                </Grid>
 
                 <!-- DIVIDER 1 -->
                 <Rectangle Grid.Column="1" Width="1" Fill="#E2E8F0" Margin="10,4" VerticalAlignment="Stretch" />
 
                 <!-- 2. HEAT INFO & STEPPER (Prev & Next Buttons Only, No Dropdown) -->
-                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="4,0">
-                    <TextBlock Text="HEAT" FontSize="17" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,5" HorizontalAlignment="Center"/>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <Button x:Name="btnPrevHeat" Content="◀" 
-                                Style="{StaticResource HeaderOutlinedButtonStyle}"
-                                Padding="12,5" Margin="0,0,6,0" FontSize="12" FontWeight="Bold"
-                                Click="BtnPrevHeat_Click"
-                                ToolTip="Previous Heat"/>
-                        <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" 
-                                CornerRadius="4" Padding="14,5" MinWidth="90">
-                            <TextBlock x:Name="txtCurrentHeatDisplay" Text="Heat 1 / 2" 
-                                       FontSize="13" FontWeight="Bold" Foreground="#0F172A"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <Button x:Name="btnNextHeat" Content="▶" 
-                                Style="{StaticResource HeaderOutlinedButtonStyle}"
-                                Padding="12,5" Margin="6,0,0,0" FontSize="12" FontWeight="Bold"
-                                Click="BtnNextHeat_Click"
-                                ToolTip="Next Heat"/>
+                <Grid Grid.Column="2" Margin="4,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="HEAT" FontSize="19" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <Button x:Name="btnPrevHeat" Content="◀" 
+                                    Style="{StaticResource HeaderOutlinedButtonStyle}"
+                                    Padding="12,5" Margin="0,0,6,0" FontSize="13" FontWeight="Bold"
+                                    Click="BtnPrevHeat_Click"
+                                    ToolTip="Previous Heat"/>
+                            <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" 
+                                    CornerRadius="4" Padding="14,5" MinWidth="100">
+                                <TextBlock x:Name="txtCurrentHeatDisplay" Text="Heat 1 / 2" 
+                                           FontSize="16" FontWeight="Bold" Foreground="#0F172A"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <Button x:Name="btnNextHeat" Content="▶" 
+                                    Style="{StaticResource HeaderOutlinedButtonStyle}"
+                                    Padding="12,5" Margin="6,0,0,0" FontSize="13" FontWeight="Bold"
+                                    Click="BtnNextHeat_Click"
+                                    ToolTip="Next Heat"/>
+                        </StackPanel>
+                        <TextBlock x:Name="txtHeatSwimmerCount" Text="8 Swimmers on Board" 
+                                   FontSize="16" FontWeight="SemiBold" Foreground="#64748B" Margin="0,4,0,0"
+                                   HorizontalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock x:Name="txtHeatSwimmerCount" Text="8 Swimmers on Board" 
-                               FontSize="15" FontWeight="SemiBold" Foreground="#64748B" Margin="0,4,0,0"
-                               HorizontalAlignment="Center"/>
-                </StackPanel>
+                </Grid>
 
                 <!-- DIVIDER 2 -->
                 <Rectangle Grid.Column="3" Width="1" Fill="#E2E8F0" Margin="10,4" VerticalAlignment="Stretch" />
 
                 <!-- 3. COMPETITION NAME (Equal Share) -->
-                <StackPanel Grid.Column="4" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
-                    <TextBlock Text="COMPETITION" FontSize="17" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,5" HorizontalAlignment="Center"/>
-                    <TextBlock x:Name="txtMeetTitle" Text="Jakarta Open Aquatic Championship 2026" 
-                               FontSize="15" FontWeight="Bold" Foreground="#0F172A" 
-                               TextWrapping="Wrap" LineHeight="17" TextAlignment="Center"
+                <Grid Grid.Column="4" Margin="6,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="COMPETITION" FontSize="19" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <TextBlock Grid.Row="1" x:Name="txtMeetTitle" Text="Jakarta Open Aquatic Championship 2026" 
+                               FontSize="18" FontWeight="Bold" Foreground="#0F172A" 
+                               TextWrapping="Wrap" LineHeight="21" TextAlignment="Center"
+                               VerticalAlignment="Center" HorizontalAlignment="Center"
                                ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-                </StackPanel>
+                </Grid>
 
                 <!-- DIVIDER 3 -->
                 <Rectangle Grid.Column="5" Width="1" Fill="#E2E8F0" Margin="10,4" VerticalAlignment="Stretch" />
 
                 <!-- 4. CURRENT DATE (Equal Share) -->
-                <StackPanel Grid.Column="6" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
-                    <TextBlock Text="DATE" FontSize="17" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,5" HorizontalAlignment="Center"/>
-                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" 
-                            CornerRadius="5" Padding="16,5" MinWidth="130" HorizontalAlignment="Center">
+                <Grid Grid.Column="6" Margin="6,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="DATE" FontSize="19" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,5" HorizontalAlignment="Center"/>
+                    <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" 
+                            CornerRadius="5" Padding="16,5" MinWidth="130" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock x:Name="txtCurrentDate" Text="11 Sep 2026" 
-                                       FontSize="15" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Center"/>
+                                       FontSize="17" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Center"/>
                             <TextBlock x:Name="txtCurrentDayOfWeek" Text="Friday" 
-                                       FontSize="12" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                       FontSize="13.5" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                         </StackPanel>
                     </Border>
-                </StackPanel>
+                </Grid>
 
                 <!-- DIVIDER 4 -->
                 <Rectangle Grid.Column="7" Width="1" Fill="#E2E8F0" Margin="10,4" VerticalAlignment="Stretch" />
@@ -1034,7 +1055,7 @@
                                                      Tag="{Binding}"
                                                      LostFocus="OwsBibNumber_LostFocus"
                                                      KeyDown="OwsBibNumber_KeyDown"
-                                                     ToolTip="Masukkan nomor BIB peserta, lalu tekan Enter atau klik di luar kolom ini untuk mengisi nama dan klub secara otomatis."/>
+                                                     ToolTip="Enter participant's BIB number, then press Enter or click outside to auto-fill name and club."/>
 
                                             <!-- ATHLETE NAME (Read-only, auto-filled from BIB) -->
                                             <TextBlock Grid.Column="2" Text="{Binding SwimmerName}" 
@@ -1093,7 +1114,7 @@
                                                     Width="24" Height="24" Background="#FEE2E2" BorderThickness="0" Cursor="Hand"
                                                     Tag="{Binding}" Click="BtnDeleteOwsRecord_Click"
                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                    ToolTip="Hapus catatan finis ini">
+                                                    ToolTip="Delete this finish record">
                                                 <Button.Template>
                                                     <ControlTemplate TargetType="Button">
                                                         <Border Background="{TemplateBinding Background}" CornerRadius="12">
@@ -1186,7 +1207,7 @@
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
                                 Click="BtnShowQrCode_Click"
-                                ToolTip="Tampilkan QR Code koneksi HP (IP &amp; Access Code)"
+                                ToolTip="Show Mobile QR Code (IP &amp; Access Code)"
                                 Padding="6,1"
                                 Height="19"
                                 Cursor="Hand">
@@ -1234,7 +1255,7 @@
                             <TextBlock x:Name="txtAccessCode" Text="----" FontSize="11" FontWeight="Bold" Foreground="#0284C7" Margin="0,0,6,2" />
                             <Button x:Name="btnRefreshAccessCode" Content="🔄" FontSize="10" Padding="3,0" Margin="0,0,0,2"
                                     Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                    ToolTip="Generate ulang 4-digit Access Code baru"
+                                    ToolTip="Generate new 4-digit Access Code"
                                     Click="BtnRefreshAccessCode_Click"/>
                         </StackPanel>
 
@@ -1298,8 +1319,8 @@
                             Content="PRINT" 
                             Style="{StaticResource HeaderOutlinedButtonStyle}"
                             FontWeight="Bold" 
-                            FontSize="13"
-                            Padding="22,10"
+                            FontSize="14"
+                            Padding="26,13"
                             Click="BtnPrintResults_Click"
                             ToolTip="Print official race results to 58mm thermal printer"/>
                 </StackPanel>

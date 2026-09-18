@@ -44,8 +44,8 @@ namespace boston_timing_system.Models
 
         [JsonIgnore]
         public string StatusToolTip => HasBib
-            ? "Pilih status peserta (Finished, DQ, DNS, DNF)"
-            : "Status hanya dapat diubah setelah nomor BIB diisi";
+            ? "Select participant status (Finished, DQ, DNS, DNF)"
+            : "Status can only be changed after BIB number is assigned";
 
         public string BibNumber
         {

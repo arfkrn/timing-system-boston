@@ -73,7 +73,7 @@ namespace boston_timing_system
             _engine.OwsRecordStatusChanged += (rec, status) => RunOnUi(() =>
             {
                 UpdateOwsSummaryUi();
-                AddLogMessage($"[OWS STATUS] BIB {rec.BibNumber} ({rec.SwimmerName}) status diubah menjadi {status}.");
+                AddLogMessage($"[OWS STATUS] BIB {rec.BibNumber} ({rec.SwimmerName}) status changed to {status}.");
                 TriggerAutoSave(immediate: false);
             });
 
@@ -89,14 +89,14 @@ namespace boston_timing_system
             {
                 AddLogMessage($"[CRITICAL] WebSocket server failed on all ports: {ex.Message}");
                 MessageBox.Show(
-                    $"WebSocket server tidak dapat dijalankan di port manapun (8181, 8182, 8183, 8080).\n\n" +
-                    $"Kemungkinan penyebab:\n" +
-                    $"  • Port sedang digunakan oleh aplikasi lain\n" +
-                    $"  • Firewall memblokir semua port tersebut\n\n" +
-                    $"Detail error: {ex.Message}\n\n" +
-                    $"Perangkat mobile tidak akan dapat terhubung. " +
-                    $"Coba tutup aplikasi lain yang mungkin menggunakan port tersebut, lalu restart aplikasi ini.",
-                    "WebSocket Server Gagal",
+                    $"WebSocket server could not be started on any port (8181, 8182, 8183, 8080).\n\n" +
+                    $"Possible causes:\n" +
+                    $"  • Ports are being used by another application\n" +
+                    $"  • Firewall is blocking all candidate ports\n\n" +
+                    $"Error details: {ex.Message}\n\n" +
+                    $"Mobile devices will not be able to connect. " +
+                    $"Please close any applications using these ports and restart this application.",
+                    "WebSocket Server Failed",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
@@ -155,6 +155,7 @@ namespace boston_timing_system
             // 5. Initialize default meet structure
             InitializeDefaultMeet();
 
+            ApplyTimingModeUi(_engine.CurrentMode);
             UpdateUiState();
         }
 
@@ -196,7 +197,10 @@ namespace boston_timing_system
             var originalEvent = _currentMeet.SelectedEvent;
             var originalHeat = _currentMeet.SelectedHeat;
 
-            var meetManagerWin = new MeetManagerWindow(_currentMeet, _excelService, _engine.CurrentMode, _persistenceService)
+            // Create an isolated deep clone snapshot so that changes in Meet Manager can be fully cancelled
+            var meetSnapshot = _persistenceService.CloneMeet(_currentMeet);
+
+            var meetManagerWin = new MeetManagerWindow(meetSnapshot, _excelService, _engine.CurrentMode, _persistenceService)
             {
                 Owner = this
             };
@@ -462,6 +466,16 @@ namespace boston_timing_system
 
         private void BtnStopRace_Click(object sender, RoutedEventArgs e)
         {
+            if (_engine.IsOpenWaterMode && _engine.IsRunning)
+            {
+                var confirm = MessageBox.Show(
+                    "Are you sure you want to finish and end the Open Water Swimming race?",
+                    "Confirm Finish Race",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (confirm != MessageBoxResult.Yes) return;
+            }
+
             _engine.StopRace();
             _displayTimer.Stop();
             txtMasterTimer.Text = _engine.FormattedElapsedTime;
@@ -482,8 +496,8 @@ namespace boston_timing_system
                 (_currentMeet.SelectedHeat.IsCompleted || _currentMeet.SelectedHeat.Lanes.Any(MeetExportOptions.HasResult)))
             {
                 var confirm = MessageBox.Show(
-                    $"Heat {_currentMeet.SelectedHeat.HeatNumber} sudah memiliki hasil balapan resmi.\n\nApakah Anda yakin ingin mereset dan mengulang lomba untuk heat ini? Catatan waktu heat ini akan dihapus.",
-                    "Konfirmasi Reset Heat Selesai",
+                    $"Heat {_currentMeet.SelectedHeat.HeatNumber} already has official race results.\n\nAre you sure you want to reset and restart this heat? The recorded times for this heat will be cleared.",
+                    "Confirm Reset Completed Heat",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
 
@@ -710,8 +724,8 @@ namespace boston_timing_system
             if (_engine.IsRunning)
             {
                 MessageBox.Show(
-                    "Balapan sedang berjalan! Hentikan atau reset balapan terlebih dahulu sebelum mengganti mode pencatatan waktu.",
-                    "Peringatan Mode Balapan",
+                    "Race is currently running! Please stop or reset the race before switching timing modes.",
+                    "Race Mode Warning",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 return;
@@ -778,7 +792,8 @@ namespace boston_timing_system
             }
 
             AddLogMessage($"Switched to {targetMode} Meet: '{_currentMeet.MeetName}' ({_currentMeet.Events.Count} Events)");
-            TriggerAutoSave(immediate: false);
+            _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
+            TriggerAutoSave(immediate: true);
         }
 
         private void ApplyTimingModeUi(TimingMode mode)
@@ -793,6 +808,9 @@ namespace boston_timing_system
                 bdrPoolLanesView.Visibility = Visibility.Visible;
                 bdrOwsView.Visibility = Visibility.Collapsed;
 
+                btnStopRace.Content = "STOP ALL";
+                btnStopRace.ToolTip = "Stop all currently running lanes simultaneously";
+
                 AddLogMessage("Mode changed to POOL SWIMMING (10 Lanes)");
             }
             else
@@ -805,8 +823,11 @@ namespace boston_timing_system
                 bdrPoolLanesView.Visibility = Visibility.Collapsed;
                 bdrOwsView.Visibility = Visibility.Visible;
 
+                btnStopRace.Content = "FINISH RACE";
+                btnStopRace.ToolTip = "End open water swimming race and stop master timer";
+
                 UpdateOwsSummaryUi();
-                AddLogMessage("Mode changed to OPEN WATER SWIMMING (OWS - 1 Starter & 1 Wasit)");
+                AddLogMessage("Mode changed to OPEN WATER SWIMMING (OWS - 1 Starter & 1 Referee)");
             }
 
             UpdateMobileConnectIndicators();
@@ -817,8 +838,8 @@ namespace boston_timing_system
             if (_engine.Status != RaceStatus.Running)
             {
                 MessageBox.Show(
-                    "Lomba belum dimulai! Tekan 'START' terlebih dahulu sebelum mencatat waktu finis perenang.",
-                    "Info OWS",
+                    "Race has not started! Click 'START' first before recording a swimmer's finish time.",
+                    "OWS Info",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -828,7 +849,7 @@ namespace boston_timing_system
             if (record != null)
             {
                 UpdateOwsSummaryUi();
-                AddLogMessage($"[DESKTOP OWS TAP] Rank #{record.Rank} ({record.FormattedTime}) dicatat.");
+                AddLogMessage($"[DESKTOP OWS TAP] Rank #{record.Rank} ({record.FormattedTime}) recorded.");
             }
         }
 
@@ -837,8 +858,8 @@ namespace boston_timing_system
             if (sender is Button btn && btn.Tag is OwsRecordModel record)
             {
                 var confirm = MessageBox.Show(
-                    $"Hapus catatan finis Rank #{record.Rank} ({record.FormattedTime}) [Bib: {record.BibNumber}]?",
-                    "Konfirmasi Hapus Finisher OWS",
+                    $"Delete finish record Rank #{record.Rank} ({record.FormattedTime}) [Bib: {record.BibNumber}]?",
+                    "Confirm Delete OWS Finisher",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
 
@@ -847,7 +868,7 @@ namespace boston_timing_system
                     _engine.RemoveOwsRecord(record);
                     UpdateOwsSummaryUi();
                     _wsServer.Broadcast(_wsServer.CreateStateSyncEvent());
-                    AddLogMessage($"[OWS DELETE] Rank #{record.Rank} dihapus.");
+                    AddLogMessage($"[OWS DELETE] Rank #{record.Rank} deleted.");
                 }
             }
         }
@@ -930,8 +951,8 @@ namespace boston_timing_system
                 if (isDuplicate)
                 {
                     MessageBox.Show(
-                        $"BIB \"{enteredBib}\" sudah tercatat di finisher lain.\n\nSetiap BIB hanya boleh muncul satu kali. Silakan periksa kembali.",
-                        "BIB Duplikat",
+                        $"BIB \"{enteredBib}\" is already recorded for another finisher.\n\nEach BIB can only appear once. Please check and try again.",
+                        "Duplicate BIB",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                     record.BibNumber = string.Empty;
@@ -953,15 +974,15 @@ namespace boston_timing_system
                     record.BibNumber = string.Empty;
                     record.SwimmerName = string.Empty;
                     record.Club = string.Empty;
-                    AddLogMessage($"[OWS BIB] #{record.Rank} BIB {enteredBib} tidak ditemukan di daftar peserta heat ini.");
+                    AddLogMessage($"[OWS BIB] #{record.Rank} BIB {enteredBib} not found in this heat's participant list.");
 
                     string heatInfo = _engine.CurrentHeat != null
                         ? $"Event {_engine.CurrentHeat.EventNumber} (Heat {_engine.CurrentHeat.HeatNumber})"
-                        : "heat saat ini";
+                        : "the current heat";
 
                     MessageBox.Show(
-                        $"Nomor BIB \"{enteredBib}\" tidak terdaftar pada {heatInfo}.\n\nSilakan periksa kembali daftar peserta atau nomor BIB yang dimasukkan.",
-                        "BIB Tidak Terdaftar",
+                        $"BIB number \"{enteredBib}\" is not registered in {heatInfo}.\n\nPlease check the participant list or the entered BIB number.",
+                        "BIB Not Registered",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
 
@@ -1119,7 +1140,7 @@ namespace boston_timing_system
             {
                 string newCode = _wsServer.RegenerateAccessCode();
                 txtAccessCode.Text = newCode;
-                AddLogMessage($"Access code baru digenerate: {newCode}");
+                AddLogMessage($"New access code generated: {newCode}");
             }
         }
 
@@ -1258,16 +1279,34 @@ namespace boston_timing_system
             if (_persistenceService.HasAutoSaveSession())
             {
                 var timestamp = _persistenceService.GetAutoSaveTimestamp();
-                string timeStr = timestamp.HasValue ? timestamp.Value.ToString("dd MMM yyyy HH:mm:ss") : "sebelumnya";
+                string timeStr = timestamp.HasValue ? timestamp.Value.ToString("dd MMM yyyy HH:mm:ss") : "previous";
+                bool isCrash = _persistenceService.IsCrashDetected();
+
+                string dialogTitle;
+                string dialogMessage;
+
+                if (isCrash)
+                {
+                    dialogTitle = "Race Session Recovery (Crash Recovery)";
+                    dialogMessage = $"An unexpected shutdown was detected. A previous race session was auto-saved on:\n{timeStr}\n\n" +
+                                    "Do you want to recover that session?\n\n" +
+                                    "• Select [Yes] to recover your previous race session\n" +
+                                    "• Select [No] to discard it and start a new meet";
+                }
+                else
+                {
+                    dialogTitle = "Continue Previous Session";
+                    dialogMessage = $"A previously saved race session is available from:\n{timeStr}\n\n" +
+                                    "Do you want to continue that session?\n\n" +
+                                    "• Select [Yes] to load and continue the previous race session\n" +
+                                    "• Select [No] to start a clean new meet session";
+                }
 
                 var result = MessageBox.Show(
-                    $"Ditemukan sesi lomba sebelumnya yang tersimpan otomatis pada:\n{timeStr}\n\n" +
-                    "Apakah Anda ingin memulihkan sesi tersebut?\n\n" +
-                    "• Pilih [Yes] untuk melanjutkan sesi lomba sebelumnya\n" +
-                    "• Pilih [No] untuk memulai sesi lomba baru (sesi lama akan direset)",
-                    "Pemulihan Sesi Lomba (Crash Recovery)",
+                    dialogMessage,
+                    dialogTitle,
                     MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
+                    isCrash ? MessageBoxImage.Warning : MessageBoxImage.Question);
 
                 if (result == MessageBoxResult.Yes)
                 {
@@ -1276,9 +1315,13 @@ namespace boston_timing_system
                 else
                 {
                     _persistenceService.ClearAutoSaveSession();
-                    AddLogMessage("Sesi lama direset. Memulai kompetisi baru.");
+                    _persistenceService.MarkSessionCleanExit();
+                    AddLogMessage("Previous session discarded. Starting a new meet.");
                 }
             }
+
+            // Mark session as active so that if the app terminates abnormally, it will be detected as a crash
+            _persistenceService.MarkSessionActive();
         }
 
         private void Window_Closing(object? sender, CancelEventArgs e)
@@ -1290,6 +1333,9 @@ namespace boston_timing_system
                     _engine.SaveResultsToHeat(_engine.CurrentHeat);
                 }
                 TriggerAutoSave(immediate: true);
+
+                // Normal close by user: remove lock marker so next launch is treated as clean exit
+                _persistenceService.MarkSessionCleanExit();
             }
             catch
             {
@@ -1347,7 +1393,7 @@ namespace boston_timing_system
                 var session = await _persistenceService.LoadAutoSaveSessionAsync();
                 if (session == null)
                 {
-                    MessageBox.Show("Gagal membaca file sesi auto-save.", "Pemulihan Gagal", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show("Failed to read auto-save session file.", "Recovery Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -1411,12 +1457,12 @@ namespace boston_timing_system
                     UpdateNavigationButtonStates();
                 }
 
-                AddLogMessage($"Sesi lomba '{_currentMeet.MeetName}' ({_currentMeet.Events.Count} Event) berhasil dipulihkan.");
+                AddLogMessage($"Race session '{_currentMeet.MeetName}' ({_currentMeet.Events.Count} Events) successfully restored.");
             }
             catch (Exception ex)
             {
                 AddLogMessage($"[RESTORE ERROR] {ex.Message}");
-                MessageBox.Show($"Terjadi kesalahan saat memulihkan sesi:\n{ex.Message}", "Pemulihan Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"An error occurred while restoring session:\n{ex.Message}", "Recovery Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {

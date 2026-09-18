@@ -50,6 +50,7 @@ namespace boston_timing_system.Services
         private readonly string _dataDirectory;
         private readonly string _autoSaveFilePath;
         private readonly string _autoSaveBackupPath;
+        private readonly string _activeSessionLockFilePath;
 
         private readonly SemaphoreSlim _ioLock = new(1, 1);
         private CancellationTokenSource? _debounceCts;
@@ -70,6 +71,7 @@ namespace boston_timing_system.Services
 
             _autoSaveFilePath = Path.Combine(_dataDirectory, "autosave_session.json");
             _autoSaveBackupPath = Path.Combine(_dataDirectory, "autosave_session.json.bak");
+            _activeSessionLockFilePath = Path.Combine(_dataDirectory, "session.active");
 
             try
             {
@@ -83,6 +85,60 @@ namespace boston_timing_system.Services
                 // Silently ignore directory creation errors in constructor; will retry during write
             }
         }
+
+        #region Active Session Lock & Crash Detection
+
+        /// <summary>
+        /// Checks if a session lock marker file exists, indicating the app did not exit cleanly (crash/force-close).
+        /// </summary>
+        public bool IsCrashDetected()
+        {
+            try
+            {
+                return File.Exists(_activeSessionLockFilePath);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Creates the session lock marker file when the app begins or resumes an active session.
+        /// </summary>
+        public void MarkSessionActive()
+        {
+            try
+            {
+                int pid = Environment.ProcessId;
+                string content = $"{pid}|{DateTime.Now:O}";
+                File.WriteAllText(_activeSessionLockFilePath, content, Encoding.UTF8);
+            }
+            catch
+            {
+                // Best effort
+            }
+        }
+
+        /// <summary>
+        /// Deletes the session lock marker file on clean application exit.
+        /// </summary>
+        public void MarkSessionCleanExit()
+        {
+            try
+            {
+                if (File.Exists(_activeSessionLockFilePath))
+                {
+                    File.Delete(_activeSessionLockFilePath);
+                }
+            }
+            catch
+            {
+                // Best effort
+            }
+        }
+
+        #endregion
 
         #region Session Auto-Save & Recovery
 
@@ -395,6 +451,58 @@ namespace boston_timing_system.Services
             }
 
             File.Move(tempPath, targetFilePath, overwrite: true);
+        }
+
+        /// <summary>
+        /// Creates an isolated deep clone of a competition meet model using JSON serialization.
+        /// Allows editing in modal windows (such as MeetManagerWindow) without mutating the active session
+        /// unless the user explicitly saves / applies changes.
+        /// </summary>
+        public CompetitionMeetModel CloneMeet(CompetitionMeetModel source)
+        {
+            if (source == null) return new CompetitionMeetModel();
+
+            // Preserve active pointer indices before serializing
+            if (source.SelectedEvent != null)
+            {
+                source.ActiveEventNumber = source.SelectedEvent.EventNumber;
+            }
+            if (source.SelectedHeat != null)
+            {
+                source.ActiveHeatNumber = source.SelectedHeat.HeatNumber;
+            }
+
+            string json = JsonSerializer.Serialize(source, JsonOptions);
+            var clone = JsonSerializer.Deserialize<CompetitionMeetModel>(json, JsonOptions) ?? new CompetitionMeetModel();
+
+            // Re-link pointer objects in the clone
+            if (clone.Events.Count > 0)
+            {
+                if (clone.ActiveEventNumber.HasValue)
+                {
+                    clone.SelectedEvent = clone.Events.FirstOrDefault(ev => ev.EventNumber == clone.ActiveEventNumber.Value)
+                                          ?? clone.Events[0];
+                }
+                else
+                {
+                    clone.SelectedEvent = clone.Events[0];
+                }
+
+                if (clone.SelectedEvent != null && clone.SelectedEvent.Heats.Count > 0)
+                {
+                    if (clone.ActiveHeatNumber.HasValue)
+                    {
+                        clone.SelectedHeat = clone.SelectedEvent.Heats.FirstOrDefault(h => h.HeatNumber == clone.ActiveHeatNumber.Value)
+                                             ?? clone.SelectedEvent.Heats[0];
+                    }
+                    else
+                    {
+                        clone.SelectedHeat = clone.SelectedEvent.Heats[0];
+                    }
+                }
+            }
+
+            return clone;
         }
 
         #endregion
