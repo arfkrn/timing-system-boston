@@ -654,7 +654,8 @@ namespace boston_timing_system.Services
                             break;
                         }
 
-                        int laneToStop = command.LaneNumber ?? client.AssignedLane ?? -1;
+                        int rawLaneToStop = command.LaneNumber ?? client.AssignedLane ?? -1;
+                        int laneToStop = (rawLaneToStop == 10) ? 0 : rawLaneToStop;
                         if (laneToStop >= 0)
                         {
                             double latencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
@@ -732,7 +733,8 @@ namespace boston_timing_system.Services
                         break;
 
                     case "RECORD_SPLIT":
-                        int laneForSplit = command.LaneNumber ?? client.AssignedLane ?? -1;
+                        int rawLaneForSplit = command.LaneNumber ?? client.AssignedLane ?? -1;
+                        int laneForSplit = (rawLaneForSplit == 10) ? 0 : rawLaneForSplit;
                         if (laneForSplit >= 0)
                         {
                             double latencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;

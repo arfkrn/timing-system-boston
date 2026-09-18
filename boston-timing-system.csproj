@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Autoupdater.NET.Official" Version="1.9.3" />
     <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="Fleck" Version="1.2.0" />
     <PackageReference Include="QRCoder" Version="1.8.0" />
@@ -24,6 +25,9 @@
 
   <ItemGroup>
     <Resource Include="Assets\*.png" />
+    <Content Include="Assets\Scoreboard\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

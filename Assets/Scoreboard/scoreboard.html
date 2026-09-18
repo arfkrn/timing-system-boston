@@ -1,0 +1,128 @@
+﻿<!DOCTYPE html>
+<html lang=id>
+<head>
+  <meta charset=UTF-8 />
+  <meta name=viewport content=width=device-width, initial-scale=1.0 />
+  <title>Boston Timing System • Live Scoreboard</title>
+  <link rel=stylesheet href=scoreboard.css />
+  <link rel=preconnect href=https://fonts.googleapis.com>
+  <link rel=preconnect href=https://fonts.gstatic.com crossorigin>
+  <link href=https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@600;800&display=swap rel=stylesheet>
+</head>
+<body>
+  <div class=scoreboard-container>
+    <!-- TOP HEADER BAR -->
+    <header class=header-bar>
+      <div class=header-left>
+        <div class=brand-badge>
+          <span class=brand-dot></span>
+          <span class=brand-title>BOSTON TIMING PRO</span>
+        </div>
+        <div class=meet-info>
+          <h1 id=txtMeetTitle>SWIMMING CHAMPIONSHIP 2026</h1>
+          <div class=meta-row>
+            <span class=badge badge-event id=badgeEvent>EVENT #1</span>
+            <span class=meta-text id=txtEventName>50M FREESTYLE</span>
+            <span class=separator>•</span>
+            <span class=badge badge-heat id=badgeHeat>HEAT #1</span>
+            <span class=separator>•</span>
+            <span class=badge badge-mode id=badgeMode>POOL SWIMMING</span>
+          </div>
+        </div>
+      </div>
+
+      <div class=header-right>
+        <!-- Master Clock Widget -->
+        <div class=clock-panel>
+          <div class=clock-label-row>
+            <span class=clock-status-tag id=tagRaceStatus>READY</span>
+            <span class=clock-title>RACE CLOCK</span>
+          </div>
+          <div class=master-timer id=txtMasterTimer>00:00.00</div>
+        </div>
+
+        <!-- Fullscreen & Status button -->
+        <div class=header-actions>
+          <button id=btnFullscreen class=icon-button title=Full Screen (F11)>
+            <svg viewBox=0 0 24 24 width=20 height=20 fill=none stroke=currentColor stroke-width=2>
+              <path d=M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3/>
+            </svg>
+          </button>
+          <div class=connection-indicator id=connIndicator title=Connecting to timing engine...>
+            <span class=indicator-dot></span>
+            <span class=indicator-label id=txtConnLabel>DISCONNECTED</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- POOL VIEW (10 LANES GRID) -->
+    <main id=poolView class=view-container>
+      <div class=table-header>
+        <div class=col col-lane>LANE</div>
+        <div class=col col-swimmer>ATHLETE / SWIMMER</div>
+        <div class=col col-club>CLUB / TEAM</div>
+        <div class=col col-split>SPLIT / 50M</div>
+        <div class=col col-time>TIME</div>
+        <div class=col col-rank>RANK</div>
+      </div>
+
+      <div class=lane-rows-container id=laneRowsContainer>
+        <!-- Generated dynamically by scoreboard.js (Lanes 1-10) -->
+      </div>
+    </main>
+
+    <!-- OPEN WATER SWIMMING VIEW (LEADERBOARD OF FINISHERS) -->
+    <main id=owsView class=view-container style=display: none;>
+      <div class=ows-stats-strip>
+        <div class=ows-stat-box>
+          <span class=stat-label>TOTAL ATHLETES</span>
+          <span class=stat-val id=txtOwsTotal>0</span>
+        </div>
+        <div class=ows-stat-box highlight>
+          <span class=stat-label>FINISHED</span>
+          <span class=stat-val id=txtOwsFinished>0</span>
+        </div>
+        <div class=ows-stat-box>
+          <span class=stat-label>ON COURSE</span>
+          <span class=stat-val id=txtOwsOnCourse>0</span>
+        </div>
+        <div class=ows-stat-box>
+          <span class=stat-label>PENALIZED (DNS/DNF/DQ)</span>
+          <span class=stat-val id=txtOwsPenalized>0</span>
+        </div>
+      </div>
+
+      <div class=table-header ows-table-header>
+        <div class=col col-rank>RK</div>
+        <div class=col col-bib>BIB</div>
+        <div class=col col-swimmer>ATHLETE / SWIMMER</div>
+        <div class=col col-club>CLUB / REGION</div>
+        <div class=col col-gap>GAP</div>
+        <div class=col col-time>FINISH TIME</div>
+      </div>
+
+      <div class=lane-rows-container id=owsRowsContainer>
+        <!-- Generated dynamically by scoreboard.js -->
+      </div>
+    </main>
+
+    <!-- FOOTER STATUS STRIP -->
+    <footer class=footer-bar>
+      <div class=footer-left>
+        <span class=live-dot></span>
+        <span class=live-text>OFFICIAL TIMING DISPLAY</span>
+        <span class=separator>•</span>
+        <span id=txtLocalTime>12:00:00</span>
+      </div>
+      <div class=footer-right>
+        <span>CTS &amp; OMEGA COMPLIANT PROTOCOL</span>
+        <span class=separator>•</span>
+        <span id=txtWsEndpoint>ws://localhost:8181</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src=scoreboard.js></script>
+</body>
+</html>

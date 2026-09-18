@@ -22,6 +22,7 @@ namespace boston_timing_system
         private readonly DispatcherTimer _clockTimer;
         private readonly ExcelMeetDataService _excelService = new();
         private readonly Services.ThermalPrintService _thermalService = new();
+        private readonly Services.ScoreboardWebServer _scoreboardServer;
         private readonly MeetPersistenceService _persistenceService = new();
         private bool _isLoadingHeat;
         private bool _isHandlingOwsBibFocus;
@@ -104,11 +105,26 @@ namespace boston_timing_system
             // Footer access info — update after Start() so Port reflects the actual bound port
             txtAccessIp.Text = _wsServer.LocalIpAddress;
             txtAccessCode.Text = _wsServer.AccessCode;
-            txtAccessScoreboard.Text = $"{_wsServer.LocalIpAddress}:3000/scoreboard.html";
+
+            // 2b. Initialize embedded Scoreboard Web Server (default port 8088 with fallbacks)
+            _scoreboardServer = new Services.ScoreboardWebServer(
+                getWsPort: () => _wsServer.Port,
+                getTimingMode: () => _engine.CurrentMode.ToString(),
+                candidatePorts: new[] { 8088, 8090, 8080, 5000, 3000 });
+            _scoreboardServer.LogReceived += HandleServerLogReceived;
+            _scoreboardServer.Start();
+
+            txtAccessScoreboard.Text = _scoreboardServer.IsRunning
+                ? $"{_scoreboardServer.LocalIpAddress}:{_scoreboardServer.Port}/scoreboard.html"
+                : $"{_wsServer.LocalIpAddress}:8080/scoreboard.html";
 
             AddLogMessage("Mode initialized: POOL SWIMMING");
             AddLogMessage("System ready. ClosedXML Meet Manager active.");
             AddLogMessage($"WebSocket Server listening on {_wsServer.ServerUri}");
+            if (_scoreboardServer.IsRunning)
+            {
+                AddLogMessage($"Live Scoreboard Web Display active at {_scoreboardServer.ScoreboardUrl}");
+            }
             _wsServer.PropertyChanged += (s, e) =>
             {
                 if (e.PropertyName == nameof(TimingWebSocketServer.StartersCount) ||
@@ -585,6 +601,34 @@ namespace boston_timing_system
             catch
             {
                 // Clipboard access might occasionally be locked by other apps
+            }
+        }
+
+        private void BtnOpenScoreboardWeb_Click(object sender, RoutedEventArgs e)
+        {
+            OpenScoreboardInBrowser();
+        }
+
+        private void TxtAccessScoreboard_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            OpenScoreboardInBrowser();
+        }
+
+        private void OpenScoreboardInBrowser()
+        {
+            try
+            {
+                string url = _scoreboardServer?.ScoreboardUrl ?? $"http://{_wsServer.LocalIpAddress}:8088/scoreboard.html";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+                AddLogMessage($"Opened Scoreboard in browser: {url}");
+            }
+            catch (Exception ex)
+            {
+                AddLogMessage($"Failed to launch browser: {ex.Message}");
             }
         }
 
@@ -1152,7 +1196,8 @@ namespace boston_timing_system
                 int port = _wsServer?.Port ?? 8181;
                 string code = _wsServer?.AccessCode ?? txtAccessCode?.Text ?? "1000";
 
-                var qrWindow = new Views.QrCodeConnectionWindow(ip, port, code, webPort: 3000, timingMode: _engine.CurrentMode)
+                int webPort = _scoreboardServer?.Port ?? 8080;
+                var qrWindow = new Views.QrCodeConnectionWindow(ip, port, code, webPort: webPort, timingMode: _engine.CurrentMode)
                 {
                     Owner = this
                 };
@@ -1476,6 +1521,7 @@ namespace boston_timing_system
         {
             _clockTimer.Stop();
             _displayTimer.Stop();
+            _scoreboardServer.Dispose();
             _wsServer.Dispose();
             _engine.Dispose();
             base.OnClosed(e);

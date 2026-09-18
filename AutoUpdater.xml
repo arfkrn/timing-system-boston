@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+
+<item>
+	<version>1.0.1</version>
+	<url>https://github.com/USERNAME/REPO_KAMU/releases/download/v1.0.1/AppInstaller.zip</url>
+	<changelog>https://github.com/USERNAME/REPO_KAMU/releases/tag/v1.0.1</changelog>
+	<mandatory>false</mandatory>
+</item>

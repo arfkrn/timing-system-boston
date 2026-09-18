@@ -188,7 +188,7 @@ namespace boston_timing_system.Core
                     return false;
                 }
 
-                targetLane = Lanes.FirstOrDefault(l => l.LaneNumber == laneNumber);
+                targetLane = Lanes.FirstOrDefault(l => l.LaneNumber == laneNumber || (laneNumber == 10 && l.LaneNumber == 0) || (laneNumber == 0 && l.LaneNumber == 10));
                 if (targetLane == null || targetLane.Status != LaneStatus.Running)
                 {
                     return false;
@@ -241,7 +241,7 @@ namespace boston_timing_system.Core
                     return false;
                 }
 
-                targetLane = Lanes.FirstOrDefault(l => l.LaneNumber == laneNumber);
+                targetLane = Lanes.FirstOrDefault(l => l.LaneNumber == laneNumber || (laneNumber == 10 && l.LaneNumber == 0) || (laneNumber == 0 && l.LaneNumber == 10));
                 if (targetLane == null || targetLane.Status != LaneStatus.Running)
                 {
                     return false;
@@ -272,7 +272,7 @@ namespace boston_timing_system.Core
             return true;
         }
 
-        public bool StopRace()
+        public bool StopRace(TimeSpan? manualFinishTime = null)
         {
             TimeSpan finalElapsed;
 

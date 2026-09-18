@@ -27,7 +27,11 @@ namespace boston_timing_system.Services
                         if (address.Address.AddressFamily == AddressFamily.InterNetwork &&
                             !IPAddress.IsLoopback(address.Address))
                         {
-                            return address.Address.ToString();
+                            string ipStr = address.Address.ToString();
+                            // Skip Windows APIPA / Link-local autoconfiguration addresses (169.254.x.x)
+                            if (ipStr.StartsWith("169.254.")) continue;
+
+                            return ipStr;
                         }
                     }
                 }
