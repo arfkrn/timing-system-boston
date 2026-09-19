@@ -645,8 +645,7 @@ namespace boston_timing_system
         {
             RunOnUi(() =>
             {
-                string timestamp = DateTime.Now.ToString("HH.mm.ss");
-                MessageLogs.Insert(0, $"{timestamp}  {message}");
+                MessageLogs.Insert(0, $"{message}");
                 while (MessageLogs.Count > 100)
                 {
                     MessageLogs.RemoveAt(MessageLogs.Count - 1);

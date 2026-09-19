@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\logo-boston-cut-new.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,7 +20,6 @@
   <ItemGroup>
     <Folder Include="Models\" />
     <Folder Include="Helpers\" />
-    <Folder Include="Assets\" />
     <Folder Include="Services\" />
   </ItemGroup>
 
@@ -28,6 +28,10 @@
     <Content Include="Assets\Scoreboard\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\logo-boston-cut-new.ico" />
   </ItemGroup>
 
 </Project>

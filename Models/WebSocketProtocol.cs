@@ -75,12 +75,24 @@ namespace boston_timing_system.Models
 
         [JsonPropertyName("status")]
         public string? Status { get; set; }
+
+        /// <summary>
+        /// Unique client-generated action ID for Reliable ACK tracking
+        /// </summary>
+        [JsonPropertyName("requestId")]
+        public string? RequestId { get; set; }
     }
 
     public class ServerEvent
     {
         [JsonPropertyName("event")]
         public string Event { get; set; } = string.Empty;
+
+        [JsonPropertyName("action")]
+        public string? Action { get; set; }
+
+        [JsonPropertyName("requestId")]
+        public string? RequestId { get; set; }
 
         [JsonPropertyName("timingMode")]
         public string? TimingMode { get; set; }

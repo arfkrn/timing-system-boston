@@ -20,6 +20,11 @@ namespace boston_timing_system.Services
         private readonly ConcurrentDictionary<string, CachedSession> _cachedSessions = new();
         private readonly object _syncLock = new();
 
+        public const double MAX_SAFE_LATENCY_COMPENSATION_MS = 300.0;
+        public const double DEBOUNCE_WINDOW_MS = 400.0;
+        public const double OFFLINE_FLUSH_THRESHOLD_MS = 500.0;
+        private readonly ConcurrentDictionary<string, long> _lastActionTimestamps = new();
+
         private bool _isRunning;
         private int _totalClients;
         private int _startersCount;
@@ -282,7 +287,7 @@ namespace boston_timing_system.Services
 
                 if ((now - client.LastSeenUtc).TotalSeconds > 8)
                 {
-                    Log($"[HEARTBEAT TIMEOUT >8s] Device connection timed out: {client.IpAddress} ({client.Role}, Lane {client.AssignedLane})");
+                    Log($"[HEARTBEAT TIMEOUT] Device connection timed out: {client.IpAddress} ({client.Role}, Lane {client.AssignedLane})");
                     try
                     {
                         socket.Close();
@@ -302,7 +307,7 @@ namespace boston_timing_system.Services
             _clients.TryAdd(socket, client);
 
             UpdateClientMetrics();
-            Log($"Device connected: {client.IpAddress} (ID: {client.ClientId})");
+            Log($"Device connected: {client.IpAddress}";
 
             // Send current state synchronization immediately upon connecting
             SendToSocket(socket, CreateStateSyncEvent());
@@ -374,7 +379,7 @@ namespace boston_timing_system.Services
                         SendToSocket(socket, new ServerEvent
                         {
                             Event = "AUTH_REQUIRED",
-                            Message = "Perangkat belum terotentikasi. Silakan hubungkan dengan 4 digit access code yang valid."
+                            Message = "The device has not been authenticated. Please connect with a valid 4 digit access code."
                         });
                         return;
                     }
@@ -562,6 +567,7 @@ namespace boston_timing_system.Services
                                 Log($"[OWS UPDATE] Updated Rank #{rec.Rank} with BIB {rec.BibNumber} ({rec.SwimmerName})");
                             }
                         }
+                        SendAck(socket, actionUpper, command.RequestId);
                         break;
 
                     case "DELETE_OWS_RECORD":
@@ -607,10 +613,12 @@ namespace boston_timing_system.Services
                                 Log($"[OWS DELETE REJECTED] Record not found (Rank: {command.Rank}, ID: {command.Id}).");
                             }
                         }
+                        SendAck(socket, actionUpper, command.RequestId);
                         break;
 
                     case "START_RACE":
                         Log($"Command 'START_RACE' from {client.IpAddress} ({client.Role})");
+                        _lastActionTimestamps.Clear();
                         _engine.StartRace();
                         break;
 
@@ -618,10 +626,53 @@ namespace boston_timing_system.Services
                     case "STOP_LANE":
                         if (_engine.CurrentMode == TimingMode.OpenWater)
                         {
+                            if (!string.IsNullOrWhiteSpace(command.BibNumber))
+                            {
+                                string owsDebounceKey = $"OWS_FINISH_{command.BibNumber.Trim().ToUpperInvariant()}";
+                                long nowTicks = Stopwatch.GetTimestamp();
+                                if (_lastActionTimestamps.TryGetValue(owsDebounceKey, out long lastTicks) &&
+                                    Stopwatch.GetElapsedTime(lastTicks, nowTicks).TotalMilliseconds < DEBOUNCE_WINDOW_MS)
+                                {
+                                    Log($"[DEBOUNCE REJECTED] Rapid double-tap OWS Finish BIB {command.BibNumber} within 400ms ignored.");
+                                    SendAck(socket, actionUpper, command.RequestId);
+                                    break;
+                                }
+                                _lastActionTimestamps[owsDebounceKey] = nowTicks;
+                            }
+
                             double owsLatencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
                             TimeSpan? compensatedOwsTime = null;
+                            double appliedOwsCompMs = 0.0;
+                            string grade = owsLatencyMs <= 100.0 ? "A" : (owsLatencyMs <= 300.0 ? "B" : "C");
 
-                            if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
+                            bool isOfflineFlush = command.ElapsedTimeMs.HasValue && 
+                                                  command.ElapsedTimeMs.Value > 0 && 
+                                                  (_engine.Elapsed.TotalMilliseconds - command.ElapsedTimeMs.Value) > OFFLINE_FLUSH_THRESHOLD_MS;
+
+                            // FINA/CTS Priority:
+                            // 1. Offline Reconnect / Flushed Queue: Packet was recorded offline on mobile stopwatch, use client time directly!
+                            if (isOfflineFlush)
+                            {
+                                TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs!.Value);
+                                if (clientElapsed > _engine.Elapsed)
+                                {
+                                    clientElapsed = _engine.Elapsed;
+                                }
+                                compensatedOwsTime = clientElapsed;
+                                appliedOwsCompMs = (_engine.Elapsed - clientElapsed).TotalMilliseconds;
+                                grade = "OFFLINE_FLUSH";
+                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress}) [OFFLINE RECOVERED]: delay {appliedOwsCompMs:F0}ms. Used Client Stopwatch: {clientElapsed:mm\\:ss\\.ff}");
+                            }
+                            // 2. Normal Wireless Operation (Grade A/B, <= 300ms): Central Master Clock minus network latency
+                            else if (owsLatencyMs > 0 && owsLatencyMs <= MAX_SAFE_LATENCY_COMPENSATION_MS)
+                            {
+                                TimeSpan arrival = _engine.Elapsed;
+                                compensatedOwsTime = arrival - TimeSpan.FromMilliseconds(owsLatencyMs);
+                                appliedOwsCompMs = owsLatencyMs;
+                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress}) [MASTER CLOCK Grade {grade}]: Server Elapsed {arrival:mm\\:ss\\.ff} - {owsLatencyMs:F1}ms = {compensatedOwsTime:mm\\:ss\\.ff}");
+                            }
+                            // 3. High Latency Quality Gate / Fail-Safe (> 300ms): Use Local Phone Stopwatch
+                            else if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
                             {
                                 TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value);
                                 if (clientElapsed > _engine.Elapsed)
@@ -629,28 +680,44 @@ namespace boston_timing_system.Services
                                     clientElapsed = _engine.Elapsed;
                                 }
                                 compensatedOwsTime = clientElapsed;
-                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress}) (Using Client Stopwatch Elapsed: {clientElapsed:mm\\:ss\\.ff})");
+                                appliedOwsCompMs = (_engine.Elapsed - clientElapsed).TotalMilliseconds;
+                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress}) [FAIL-SAFE LOCAL CLOCK Grade {grade}]: Latency {owsLatencyMs:F1}ms > 300ms. Used Client Stopwatch: {clientElapsed:mm\\:ss\\.ff}");
                             }
-                            else if (owsLatencyMs > 0)
+                            // 4. Fallback Clamping (High latency without local elapsed time)
+                            else if (owsLatencyMs > MAX_SAFE_LATENCY_COMPENSATION_MS)
                             {
                                 TimeSpan arrival = _engine.Elapsed;
-                                compensatedOwsTime = arrival - TimeSpan.FromMilliseconds(owsLatencyMs);
-                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress}) (Compensated: -{owsLatencyMs:F1}ms)");
+                                compensatedOwsTime = arrival - TimeSpan.FromMilliseconds(MAX_SAFE_LATENCY_COMPENSATION_MS);
+                                appliedOwsCompMs = MAX_SAFE_LATENCY_COMPENSATION_MS;
+                                Log($"[QUALITY GATE CLAMPED] OWS finish high latency ({owsLatencyMs:F1}ms) clamped to {MAX_SAFE_LATENCY_COMPENSATION_MS}ms. Grade C.");
                             }
                             else
                             {
-                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress})");
+                                compensatedOwsTime = _engine.Elapsed;
+                                Log($"Command '{actionUpper}' (OWS Finish) from {client.Role} ({client.IpAddress}) [DIRECT SERVER CLOCK]");
                             }
 
                             var recorded = _engine.RecordOwsFinish(compensatedOwsTime, command.BibNumber, command.SwimmerName);
                             if (recorded != null)
                             {
+                                recorded.LastAuditTrail = new TimingAuditTrail
+                                {
+                                    SourceRole = client.Role.ToString(),
+                                    SourceIp = client.IpAddress,
+                                    LocalStopwatchTime = command.ElapsedTimeMs.HasValue ? TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value).ToString(@"mm\:ss\.ff") : "--",
+                                    ServerArrivalTime = _engine.FormattedElapsedTime,
+                                    MeasuredLatencyMs = owsLatencyMs,
+                                    AppliedCompensationMs = appliedOwsCompMs,
+                                    QualityGrade = grade,
+                                    Timestamp = DateTime.Now
+                                };
                                 Log($"[OWS FINISH SUCCESS] Rank #{recorded.Rank} recorded: {recorded.FormattedTime} ({recorded.BibNumber})");
                             }
                             else
                             {
-                                Log($"[OWS FINISH REJECTED] Status perlombaan saat ini '{_engine.Status}'. Lomba harus di-START terlebih dahulu agar finis tercatat.");
+                                Log($"[OWS FINISH REJECTED] The current race status is '{_engine.Status}'. The race must be started first for the finish to be recorded.");
                             }
+                            SendAck(socket, actionUpper, command.RequestId);
                             break;
                         }
 
@@ -658,10 +725,50 @@ namespace boston_timing_system.Services
                         int laneToStop = (rawLaneToStop == 10) ? 0 : rawLaneToStop;
                         if (laneToStop >= 0)
                         {
+                            string debounceKey = $"STOP_{laneToStop}";
+                            long nowTicks = Stopwatch.GetTimestamp();
+                            if (_lastActionTimestamps.TryGetValue(debounceKey, out long lastTicks) &&
+                                Stopwatch.GetElapsedTime(lastTicks, nowTicks).TotalMilliseconds < DEBOUNCE_WINDOW_MS)
+                            {
+                                Log($"[DEBOUNCE REJECTED] Rapid double-tap on Lane {laneToStop} from {client.Role} ({client.IpAddress}) within 400ms ignored.");
+                                SendAck(socket, "STOP_LANE", command.RequestId, rawLaneToStop);
+                                break;
+                            }
+                            _lastActionTimestamps[debounceKey] = nowTicks;
+
                             double latencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
                             TimeSpan? compensatedTime = null;
+                            double appliedCompMs = 0.0;
+                            string grade = latencyMs <= 100.0 ? "A" : (latencyMs <= 300.0 ? "B" : "C");
 
-                            if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
+                            bool isOfflineFlush = command.ElapsedTimeMs.HasValue && 
+                                                  command.ElapsedTimeMs.Value > 0 && 
+                                                  (_engine.Elapsed.TotalMilliseconds - command.ElapsedTimeMs.Value) > OFFLINE_FLUSH_THRESHOLD_MS;
+
+                            // FINA/CTS Priority:
+                            // 1. Offline Reconnect / Flushed Queue: Packet was recorded offline on mobile stopwatch, use client time directly!
+                            if (isOfflineFlush)
+                            {
+                                TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs!.Value);
+                                if (clientElapsed > _engine.Elapsed)
+                                {
+                                    clientElapsed = _engine.Elapsed;
+                                }
+                                compensatedTime = clientElapsed;
+                                appliedCompMs = (_engine.Elapsed - clientElapsed).TotalMilliseconds;
+                                grade = "OFFLINE_FLUSH";
+                                Log($"Command 'STOP_LANE' Lane {laneToStop} from {client.Role} ({client.IpAddress}) [OFFLINE RECOVERED]: delay {appliedCompMs:F0}ms. Used Client Stopwatch: {clientElapsed:mm\\:ss\\.ff}");
+                            }
+                            // 2. Normal Wireless Operation (Grade A/B, <= 300ms): Central Master Clock minus network latency
+                            else if (latencyMs > 0 && latencyMs <= MAX_SAFE_LATENCY_COMPENSATION_MS)
+                            {
+                                TimeSpan arrival = _engine.Elapsed;
+                                compensatedTime = arrival - TimeSpan.FromMilliseconds(latencyMs);
+                                appliedCompMs = latencyMs;
+                                Log($"Command 'STOP_LANE' Lane {laneToStop} from {client.Role} ({client.IpAddress}) [MASTER CLOCK Grade {grade}]: Server Elapsed {arrival:mm\\:ss\\.ff} - {latencyMs:F1}ms = {compensatedTime:mm\\:ss\\.ff}");
+                            }
+                            // 3. High Latency Quality Gate / Fail-Safe (> 300ms): Use Local Phone Stopwatch
+                            else if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
                             {
                                 TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value);
                                 if (clientElapsed > _engine.Elapsed)
@@ -669,17 +776,21 @@ namespace boston_timing_system.Services
                                     clientElapsed = _engine.Elapsed;
                                 }
                                 compensatedTime = clientElapsed;
-                                Log($"Command 'STOP_LANE' Lane {laneToStop} from {client.Role} ({client.IpAddress}) (Using Client Stopwatch Elapsed: {clientElapsed:mm\\:ss\\.ff})");
+                                appliedCompMs = (_engine.Elapsed - clientElapsed).TotalMilliseconds;
+                                Log($"Command 'STOP_LANE' Lane {laneToStop} from {client.Role} ({client.IpAddress}) [FAIL-SAFE LOCAL CLOCK Grade {grade}]: Latency {latencyMs:F1}ms > 300ms. Used Client Stopwatch: {clientElapsed:mm\\:ss\\.ff}");
                             }
-                            else if (latencyMs > 0)
+                            // 4. Fallback Clamping (High latency without local elapsed time)
+                            else if (latencyMs > MAX_SAFE_LATENCY_COMPENSATION_MS)
                             {
                                 TimeSpan arrival = _engine.Elapsed;
-                                compensatedTime = arrival - TimeSpan.FromMilliseconds(latencyMs);
-                                Log($"Command 'STOP_LANE' Lane {laneToStop} from {client.Role} ({client.IpAddress}) (Compensated: -{latencyMs:F1}ms)");
+                                compensatedTime = arrival - TimeSpan.FromMilliseconds(MAX_SAFE_LATENCY_COMPENSATION_MS);
+                                appliedCompMs = MAX_SAFE_LATENCY_COMPENSATION_MS;
+                                Log($"[QUALITY GATE CLAMPED] Lane {laneToStop} high latency ({latencyMs:F1}ms) clamped to {MAX_SAFE_LATENCY_COMPENSATION_MS}ms. Grade C.");
                             }
                             else
                             {
-                                Log($"Command 'STOP_LANE' for Lane {laneToStop} from {client.Role} ({client.IpAddress})");
+                                compensatedTime = _engine.Elapsed;
+                                Log($"Command 'STOP_LANE' for Lane {laneToStop} from {client.Role} ({client.IpAddress}) [DIRECT SERVER CLOCK]");
                             }
 
                             bool stopped = _engine.StopLane(laneToStop, compensatedTime);
@@ -692,14 +803,34 @@ namespace boston_timing_system.Services
                             }
                             else
                             {
-                                Log($"[STOP_LANE REJECTED] Lane {laneToStop} tidak dapat dihentikan. Status perlombaan: '{_engine.Status}'");
+                                Log($"[STOP_LANE REJECTED] Lane {laneToStop} cannot be stopped. Race status: '{_engine.Status}'");
                             }
 
                             var targetLane = _engine.Lanes.FirstOrDefault(l => l.LaneNumber == laneToStop);
-                            if (targetLane != null && latencyMs > 0)
+                            if (targetLane != null)
                             {
-                                targetLane.RefereeLatencyMs = latencyMs;
+                                if (latencyMs > 0)
+                                {
+                                    targetLane.RefereeLatencyMs = latencyMs;
+                                }
+                                targetLane.LastAuditTrail = new TimingAuditTrail
+                                {
+                                    SourceRole = client.Role.ToString(),
+                                    SourceIp = client.IpAddress,
+                                    LocalStopwatchTime = command.ElapsedTimeMs.HasValue ? TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value).ToString(@"mm\:ss\.ff") : "--",
+                                    ServerArrivalTime = _engine.FormattedElapsedTime,
+                                    MeasuredLatencyMs = latencyMs,
+                                    AppliedCompensationMs = appliedCompMs,
+                                    QualityGrade = grade,
+                                    Timestamp = DateTime.Now
+                                };
                             }
+
+                            SendAck(socket, "STOP_LANE", command.RequestId, rawLaneToStop);
+                        }
+                        else
+                        {
+                            SendAck(socket, "STOP_LANE", command.RequestId, rawLaneToStop);
                         }
                         break;
 
@@ -707,13 +838,33 @@ namespace boston_timing_system.Services
                     case "STOP_ALL_ACTIVE":
                         if (_engine.CurrentMode == TimingMode.OpenWater)
                         {
-                            Log($"Command '{actionUpper}' from {client.Role} ({client.IpAddress}) diabaikan: mode Open Water (OWS) tidak mendukung aksi hentikan semua lintasan.");
+                            Log($"Command '{actionUpper}' from {client.Role} ({client.IpAddress}) Ignored: Open Water (OWS) mode does not support the \"stop all laps\" action.");
                             break;
                         }
 
                         double activeLatencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
                         TimeSpan? compActiveTime = null;
-                        if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
+
+                        bool isOfflineFlushActive = command.ElapsedTimeMs.HasValue && 
+                                                    command.ElapsedTimeMs.Value > 0 && 
+                                                    (_engine.Elapsed.TotalMilliseconds - command.ElapsedTimeMs.Value) > OFFLINE_FLUSH_THRESHOLD_MS;
+
+                        if (isOfflineFlushActive)
+                        {
+                            TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs!.Value);
+                            if (clientElapsed > _engine.Elapsed)
+                            {
+                                clientElapsed = _engine.Elapsed;
+                            }
+                            compActiveTime = clientElapsed;
+                            Log($"Command '{actionUpper}' from {client.Role} ({client.IpAddress}) [OFFLINE RECOVERED]: Used Client Stopwatch: {clientElapsed:mm\\:ss\\.ff}");
+                        }
+                        else if (activeLatencyMs > 0 && activeLatencyMs <= MAX_SAFE_LATENCY_COMPENSATION_MS)
+                        {
+                            TimeSpan arrival = _engine.Elapsed;
+                            compActiveTime = arrival - TimeSpan.FromMilliseconds(activeLatencyMs);
+                        }
+                        else if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
                         {
                             TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value);
                             if (clientElapsed > _engine.Elapsed)
@@ -722,14 +873,19 @@ namespace boston_timing_system.Services
                             }
                             compActiveTime = clientElapsed;
                         }
-                        else if (activeLatencyMs > 0)
+                        else if (activeLatencyMs > MAX_SAFE_LATENCY_COMPENSATION_MS)
                         {
                             TimeSpan arrival = _engine.Elapsed;
-                            compActiveTime = arrival - TimeSpan.FromMilliseconds(activeLatencyMs);
+                            compActiveTime = arrival - TimeSpan.FromMilliseconds(MAX_SAFE_LATENCY_COMPENSATION_MS);
+                        }
+                        else
+                        {
+                            compActiveTime = _engine.Elapsed;
                         }
 
                         int stoppedLanes = _engine.StopActiveLanes(compActiveTime);
                         Log($"Command '{actionUpper}' from {client.Role} ({client.IpAddress}) - stopped {stoppedLanes} active lane(s)");
+                        SendAck(socket, actionUpper, command.RequestId);
                         break;
 
                     case "RECORD_SPLIT":
@@ -737,10 +893,50 @@ namespace boston_timing_system.Services
                         int laneForSplit = (rawLaneForSplit == 10) ? 0 : rawLaneForSplit;
                         if (laneForSplit >= 0)
                         {
+                            string debounceKey = $"SPLIT_{laneForSplit}";
+                            long nowTicks = Stopwatch.GetTimestamp();
+                            if (_lastActionTimestamps.TryGetValue(debounceKey, out long lastTicks) &&
+                                Stopwatch.GetElapsedTime(lastTicks, nowTicks).TotalMilliseconds < DEBOUNCE_WINDOW_MS)
+                            {
+                                Log($"[DEBOUNCE REJECTED] Rapid double-tap split on Lane {laneForSplit} from {client.Role} ({client.IpAddress}) within 400ms ignored.");
+                                SendAck(socket, "RECORD_SPLIT", command.RequestId, rawLaneForSplit);
+                                break;
+                            }
+                            _lastActionTimestamps[debounceKey] = nowTicks;
+
                             double latencyMs = command.EstimatedLatencyMs ?? client.OneWayLatencyMs;
                             TimeSpan? compensatedTime = null;
+                            double appliedCompMs = 0.0;
+                            string grade = latencyMs <= 100.0 ? "A" : (latencyMs <= 300.0 ? "B" : "C");
 
-                            if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
+                            bool isOfflineFlush = command.ElapsedTimeMs.HasValue && 
+                                                  command.ElapsedTimeMs.Value > 0 && 
+                                                  (_engine.Elapsed.TotalMilliseconds - command.ElapsedTimeMs.Value) > OFFLINE_FLUSH_THRESHOLD_MS;
+
+                            // FINA/CTS Priority:
+                            // 1. Offline Reconnect / Flushed Queue: Packet was recorded offline on mobile stopwatch, use client time directly!
+                            if (isOfflineFlush)
+                            {
+                                TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs!.Value);
+                                if (clientElapsed > _engine.Elapsed)
+                                {
+                                    clientElapsed = _engine.Elapsed;
+                                }
+                                compensatedTime = clientElapsed;
+                                appliedCompMs = (_engine.Elapsed - clientElapsed).TotalMilliseconds;
+                                grade = "OFFLINE_FLUSH";
+                                Log($"Command 'RECORD_SPLIT' Lane {laneForSplit} from {client.IpAddress} [OFFLINE RECOVERED]: [OFFLINE RECOVERED]: delay {appliedCompMs:F0}ms. Used Client Stopwatch: {clientElapsed:mm\\:ss\\.ff}");
+                            }
+                            // 2. Normal Wireless Operation (Grade A/B, <= 300ms): Central Master Clock minus network latency
+                            else if (latencyMs > 0 && latencyMs <= MAX_SAFE_LATENCY_COMPENSATION_MS)
+                            {
+                                TimeSpan arrival = _engine.Elapsed;
+                                compensatedTime = arrival - TimeSpan.FromMilliseconds(latencyMs);
+                                appliedCompMs = latencyMs;
+                                Log($"Command 'RECORD_SPLIT' Lane {laneForSplit} from {client.IpAddress} [MASTER CLOCK Grade {grade}]: Server Elapsed {arrival:mm\\:ss\\.ff} - {latencyMs:F1}ms = {compensatedTime:mm\\:ss\\.ff}");
+                            }
+                            // 3. High Latency Quality Gate / Fail-Safe (> 300ms): Use Local Phone Stopwatch
+                            else if (command.ElapsedTimeMs.HasValue && command.ElapsedTimeMs.Value > 0)
                             {
                                 TimeSpan clientElapsed = TimeSpan.FromMilliseconds(command.ElapsedTimeMs.Value);
                                 if (clientElapsed > _engine.Elapsed)
@@ -748,25 +944,31 @@ namespace boston_timing_system.Services
                                     clientElapsed = _engine.Elapsed;
                                 }
                                 compensatedTime = clientElapsed;
-                                Log($"Command 'RECORD_SPLIT' Lane {laneForSplit} from {client.IpAddress} (Using Client Stopwatch Elapsed: {clientElapsed:mm\\:ss\\.ff})");
+                                appliedCompMs = (_engine.Elapsed - clientElapsed).TotalMilliseconds;
+                                Log($"Command 'RECORD_SPLIT' Lane {laneForSplit} from {client.IpAddress} [FAIL-SAFE LOCAL CLOCK Grade {grade}]: Latency {latencyMs:F1}ms > 300ms. Used Client Stopwatch: {clientElapsed:mm\\:ss\\.ff}");
                             }
-                            else if (latencyMs > 0)
+                            // 4. Fallback Clamping (High latency without local elapsed time)
+                            else if (latencyMs > MAX_SAFE_LATENCY_COMPENSATION_MS)
                             {
                                 TimeSpan arrival = _engine.Elapsed;
-                                compensatedTime = arrival - TimeSpan.FromMilliseconds(latencyMs);
-                                Log($"Command 'RECORD_SPLIT' Lane {laneForSplit} from {client.IpAddress} (Compensated: -{latencyMs:F1}ms)");
+                                compensatedTime = arrival - TimeSpan.FromMilliseconds(MAX_SAFE_LATENCY_COMPENSATION_MS);
+                                appliedCompMs = MAX_SAFE_LATENCY_COMPENSATION_MS;
+                                Log($"[QUALITY GATE CLAMPED] Lane {laneForSplit} split high latency ({latencyMs:F1}ms) clamped to {MAX_SAFE_LATENCY_COMPENSATION_MS}ms. Grade C.");
                             }
                             else
                             {
-                                Log($"Command 'RECORD_SPLIT' for Lane {laneForSplit} from {client.IpAddress}");
+                                compensatedTime = _engine.Elapsed;
+                                Log($"Command 'RECORD_SPLIT' for Lane {laneForSplit} from {client.IpAddress} [DIRECT SERVER CLOCK]");
                             }
 
                             _engine.RecordLaneSplit(laneForSplit, compensatedTime);
+                            SendAck(socket, "RECORD_SPLIT", command.RequestId, rawLaneForSplit);
                         }
                         break;
 
                     case "RESET_RACE":
                         Log($"Command 'RESET_RACE' from {client.IpAddress} ({client.Role})");
+                        _lastActionTimestamps.Clear();
                         _engine.ResetRace();
                         break;
 
@@ -837,7 +1039,7 @@ namespace boston_timing_system.Services
                     SendToSocket(client.Socket, new ServerEvent
                     {
                         Event = "AUTH_FAILED",
-                        Message = "Access Code salah! Masukkan 4 digit access code yang tertera pada server timing."
+                        Message = "Incorrect access code! Enter the 4-digit access code displayed on the timing server."
                     });
                     return;
                 }
@@ -848,11 +1050,11 @@ namespace boston_timing_system.Services
             {
                 client.IsAuthenticated = false;
                 client.Role = ClientRole.Unknown;
-                Log($"[AUTH REJECTED] {client.IpAddress} ({command.DeviceName ?? "Device"}) ditolak: Mode Open Water (OWS) tidak mendukung role Chief.");
+                Log($"[AUTH REJECTED] {client.IpAddress} ({command.DeviceName ?? "Device"}) Rejected: Open Water (OWS) mode does not support the Chief role..");
                 SendToSocket(client.Socket, new ServerEvent
                 {
                     Event = "AUTH_FAILED",
-                    Message = "Mode Open Water (OWS) tidak menggunakan role Chief! Silakan pilih role Wasit Finis atau Starter."
+                    Message = "The Open Water (OWS) mode does not use the Chief role! Please select the Finish Judge or Starter role."
                 });
                 return;
             }
@@ -1125,6 +1327,18 @@ namespace boston_timing_system.Services
             }
         }
 
+        private static void SendAck(IWebSocketConnection socket, string action, string? requestId, int? laneNumber = null)
+        {
+            SendToSocket(socket, new ServerEvent
+            {
+                Event = "COMMAND_ACK",
+                Action = action,
+                RequestId = requestId,
+                LaneNumber = laneNumber,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            });
+        }
+
         private void Log(string message)
         {
             LogReceived?.Invoke($"[{DateTime.Now:HH:mm:ss}] {message}");
@@ -1140,11 +1354,11 @@ namespace boston_timing_system.Services
                 {
                     chief.Role = ClientRole.Unknown;
                     chief.IsAuthenticated = false;
-                    Log($"[ROLE REVOKED] {chief.IpAddress} role Chief dicabut karena mode timing berpindah ke Open Water (OWS).");
+                    Log($"[ROLE REVOKED] {chief.IpAddress} The Chief role was revoked because the timing mode switched to Open Water (OWS).");
                     SendToSocket(chief.Socket, new ServerEvent
                     {
                         Event = "AUTH_REQUIRED",
-                        Message = "Mode timing berganti ke Open Water (OWS). Role Chief dinonaktifkan pada mode OWS. Silakan hubungkan kembali sebagai Wasit Finis atau Starter."
+                        Message = "The timing mode has switched to Open Water (OWS). The Chief role is disabled in OWS mode. Please reconnect as Finish Judge or Starter."
                     });
                 }
                 if (chiefClients.Count > 0)

@@ -6,7 +6,7 @@
         xmlns:helpers="clr-namespace:boston_timing_system.Helpers"
         xmlns:models="clr-namespace:boston_timing_system.Models"
         mc:Ignorable="d"
-        Title="Swimming Competition Timing System - Operator Console" 
+        Title="Boston Timing System - Operator Console" 
         Height="840" Width="1260"
         MinHeight="700" MinWidth="1020"
         Background="#FFFFFF"
@@ -259,7 +259,7 @@
                         <TextBlock x:Name="txtCurrentEventName" Text="50m Freestyle Men" 
                                    FontSize="16" FontWeight="SemiBold" Foreground="#64748B" Margin="0,4,0,0"
                                    HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="210"
-                                   ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                   ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Grid>
 
@@ -668,7 +668,7 @@
                                         <!-- 8: SIGNAL (4-bar) + latency number below -->
                                         <Border Grid.Column="8" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0">
                                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                        ToolTip="{Binding RefereeConnectionTooltip}">
+                                                        ToolTip="{Binding AuditTrailTooltip}">
                                                 <!-- 4-bar icon (dynamically follows latency) -->
                                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,2">
                                                     <!-- Bar 1 -->

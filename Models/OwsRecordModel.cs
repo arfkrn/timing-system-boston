@@ -124,6 +124,15 @@ namespace boston_timing_system.Models
         [JsonIgnore]
         public string StatusDisplay => Status.ToString();
 
+        private TimingAuditTrail? _lastAuditTrail;
+
+        [JsonIgnore]
+        public TimingAuditTrail? LastAuditTrail
+        {
+            get => _lastAuditTrail;
+            set => SetProperty(ref _lastAuditTrail, value);
+        }
+
         [JsonIgnore]
         public Action<OwsRecordModel, LaneStatus>? StatusChangedCallback { get; set; }
 

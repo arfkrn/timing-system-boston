@@ -374,26 +374,46 @@ namespace boston_timing_system.Models
             {
                 if (!IsRefereeConnected) return 0;
                 if (_refereeLatencyMs <= 0 || _refereeLatencyMs < 50.0) return 4;
-                if (_refereeLatencyMs < 100.0) return 3;
-                if (_refereeLatencyMs <= 150.0) return 2;
+                if (_refereeLatencyMs < 150.0) return 3;
+                if (_refereeLatencyMs <= 300.0) return 2;
                 return 1;
             }
         }
 
-        /// <summary>One-way latency below 50 ms — good quality.</summary>
+        /// <summary>One-way latency below 150 ms — good quality.</summary>
         [JsonIgnore]
-        public bool IsLatencyGood   => _refereeLatencyMs > 0 && _refereeLatencyMs < 50.0;
-        /// <summary>One-way latency between 50 and 150 ms — moderate quality.</summary>
+        public bool IsLatencyGood   => _refereeLatencyMs > 0 && _refereeLatencyMs < 150.0;
+        /// <summary>One-way latency between 150 and 300 ms — moderate quality.</summary>
         [JsonIgnore]
-        public bool IsLatencyMedium => _refereeLatencyMs >= 50.0 && _refereeLatencyMs <= 150.0;
-        /// <summary>One-way latency above 150 ms — poor quality.</summary>
+        public bool IsLatencyMedium => _refereeLatencyMs >= 150.0 && _refereeLatencyMs <= 300.0;
+        /// <summary>One-way latency above 300 ms — high latency quality gate.</summary>
         [JsonIgnore]
-        public bool IsLatencyHigh   => _refereeLatencyMs > 150.0;
+        public bool IsLatencyHigh   => _refereeLatencyMs > 300.0;
 
         [JsonIgnore]
         public string RefereeConnectionTooltip => IsRefereeConnected
             ? $"Referee Connected (RTT Latency: {FormattedLatency})"
             : "No Phone Connected";
+
+        private TimingAuditTrail? _lastAuditTrail;
+
+        [JsonIgnore]
+        public TimingAuditTrail? LastAuditTrail
+        {
+            get => _lastAuditTrail;
+            set
+            {
+                if (SetProperty(ref _lastAuditTrail, value))
+                {
+                    OnPropertyChanged(nameof(AuditTrailTooltip));
+                }
+            }
+        }
+
+        [JsonIgnore]
+        public string AuditTrailTooltip => LastAuditTrail != null
+            ? LastAuditTrail.Summary
+            : RefereeConnectionTooltip;
 
         public List<TimeSpan> Splits
         {
@@ -491,5 +511,20 @@ namespace boston_timing_system.Models
                 return false;
             }
         }
+    }
+
+    public class TimingAuditTrail
+    {
+        public string SourceRole { get; set; } = string.Empty;
+        public string SourceIp { get; set; } = string.Empty;
+        public string LocalStopwatchTime { get; set; } = string.Empty;
+        public string ServerArrivalTime { get; set; } = string.Empty;
+        public double MeasuredLatencyMs { get; set; }
+        public double AppliedCompensationMs { get; set; }
+        public string QualityGrade { get; set; } = "A";
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+
+        public string Summary =>
+            $"[Grade {QualityGrade}] Src: {SourceRole} ({SourceIp}) | Local: {LocalStopwatchTime} | Arrival: {ServerArrivalTime} | Latency: {MeasuredLatencyMs:F1}ms | Comp: {AppliedCompensationMs:F1}ms";
     }
 }
