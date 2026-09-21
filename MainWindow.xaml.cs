@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
+using AutoUpdaterDotNET;
 using boston_timing_system.Core;
 using boston_timing_system.Models;
 using boston_timing_system.Services;
@@ -51,6 +52,8 @@ namespace boston_timing_system
         public MainWindow()
         {
             InitializeComponent();
+
+            Loaded += MainWindow_Loaded;
 
             _persistenceService.AutoSaveStatusChanged += (msg) => RunOnUi(() => UpdateAutoSaveStatusUi(msg));
 
@@ -173,6 +176,33 @@ namespace boston_timing_system
 
             ApplyTimingModeUi(_engine.CurrentMode);
             UpdateUiState();
+        }
+
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            AutoUpdater.HttpUserAgent = "BostonTimingSystem";
+
+            AutoUpdater.ReportErrors = false;
+
+            AutoUpdater.CheckForUpdateEvent += AutoUpdater_CheckForUpdateEvent;
+
+            string updateUrl = "https://github.com/arfkrn/timing-system-boston/releases/latest/download/AutoUpdater.xml";
+            AutoUpdater.Start(updateUrl);
+        }
+
+        private void AutoUpdater_CheckForUpdateEvent(UpdateInfoEventArgs args)
+        {
+            // Jika offline atau terjadi error jaringan, langsung abaikan (silent failure)
+            if (args.Error != null)
+            {
+                return;
+            }
+
+            // Jika online dan ditemukan versi baru, tampilkan modal update bawaan AutoUpdater
+            if (args.IsUpdateAvailable)
+            {
+                AutoUpdater.ShowUpdateForm(args);
+            }
         }
 
         private void InitializeDefaultMeet()

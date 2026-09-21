@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Changelog - Boston Timing System</title>
+    <style>
+        /* Base Reset & Variables */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+            font-size: 13.5px;
+            padding: 18px 16px;
+        }
+
+        /* Container */
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 14px;
+            margin-bottom: 18px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, #2563eb, #38bdf8);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 15px;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+        }
+
+        h1 {
+            font-size: 17px;
+            font-weight: 700;
+            color: #f8fafc;
+            letter-spacing: -0.2px;
+        }
+
+        .subtitle {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        /* Release Card */
+        .release-card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+            transition: transform 0.15s ease;
+        }
+
+        .release-card.latest {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+        }
+
+        .release-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #293548;
+        }
+
+        .release-version {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .version-number {
+            font-size: 16px;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+
+        .release-date {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-latest {
+            background-color: rgba(37, 99, 235, 0.2);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+        }
+
+        .badge-tag {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-right: 6px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .tag-new {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .tag-improvement {
+            background-color: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .tag-fix {
+            background-color: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        /* Section within release */
+        .change-section {
+            margin-top: 10px;
+        }
+
+        .change-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        /* List Items */
+        .change-list {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .change-list li {
+            position: relative;
+            padding-left: 18px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: #cbd5e1;
+        }
+
+        .change-list li::before {
+            content: "•";
+            position: absolute;
+            left: 4px;
+            top: 0;
+            color: #60a5fa;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .change-list li strong {
+            color: #f1f5f9;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 1px solid #1e293b;
+            font-size: 11.5px;
+            color: #64748b;
+        }
+
+        .footer a {
+            color: #38bdf8;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-title">
+                <div class="logo-icon">B</div>
+                <div>
+                    <h1>Boston Timing System</h1>
+                    <div class="subtitle">Catatan Pembaruan & Riwayat Versi</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- VERSI TERBARU (v1.0.1)                      -->
+        <!-- Salin blok .release-card ini untuk versi baru-->
+        <!-- ========================================== -->
+        <div class="release-card latest">
+            <div class="release-header">
+                <div class="release-version">
+                    <span class="version-number">Versi 1.0.1</span>
+                    <span class="badge badge-latest">Terbaru</span>
+                </div>
+                <div class="release-date">September 2026</div>
+            </div>
+
+            <div class="change-section">
+                <ul class="change-list">
+                    <li>
+                        <span class="badge-tag tag-new">BARU</span>
+                        <strong>Meet Management & Integrasi:</strong> Dukungan manajemen perlombaan (Meet Manager), cetak hasil melalui printer thermal, dan pairing QR Code yang lebih cepat.
+                    </li>
+                    <li>
+                        <span class="badge-tag tag-improvement">PENINGKATAN</span>
+                        <strong>Toleransi Latensi Jaringan:</strong> Optimasi sinkronisasi waktu dan penyesuaian batas toleransi latensi jaringan sesuai standar industri timing olahraga.
+                    </li>
+                    <li>
+                        <span class="badge-tag tag-improvement">PENINGKATAN</span>
+                        <strong>Scoreboard Web Display:</strong> Tampilan scoreboard web lebih responsif dengan filter lane aktif dan perataan layout otomatis.
+                    </li>
+                    <li>
+                        <span class="badge-tag tag-fix">PERBAIKAN</span>
+                        <strong>Stabilitas Jaringan WebSocket:</strong> Penanganan pemutusan jaringan mendadak dan auto-reconnect yang lebih handal untuk operator dan modul timing.
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- VERSI SEBELUMNYA (v1.0.0)                  -->
+        <!-- ========================================== -->
+        <div class="release-card">
+            <div class="release-header">
+                <div class="release-version">
+                    <span class="version-number">Versi 1.0.0</span>
+                </div>
+                <div class="release-date">Rilis Awal</div>
+            </div>
+
+            <div class="change-section">
+                <ul class="change-list">
+                    <li>
+                        <span class="badge-tag tag-new">BARU</span>
+                        <strong>Digital Multi-Lane Timing:</strong> Sistem pencatatan waktu otomatis berbasis digital untuk hingga 8 lintasan (lane).
+                    </li>
+                    <li>
+                        <span class="badge-tag tag-new">BARU</span>
+                        <strong>Hardware Touchpad & Backup Button:</strong> Integrasi sinyal touchpad finish, sensor sentuh, dan tombol backup manual.
+                    </li>
+                    <li>
+                        <span class="badge-tag tag-new">BARU</span>
+                        <strong>Web-based Scoreboard:</strong> Layar display hasil live race yang dapat diakses melalui browser lokal tanpa instalasi tambahan.
+                    </li>
+                    <li>
+                        <span class="badge-tag tag-new">BARU</span>
+                        <strong>Auto Update System:</strong> Pemeriksaan otomatis pembaruan aplikasi melalui GitHub Releases.
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>Boston Timing System &bull; Swimming Race Timing Solution</p>
+        </div>
+    </div>
+</body>
+</html>
