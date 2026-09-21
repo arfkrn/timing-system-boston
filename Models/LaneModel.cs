@@ -227,6 +227,7 @@ namespace boston_timing_system.Models
                     OnPropertyChanged(nameof(CanStop));
                     OnPropertyChanged(nameof(IsFinished));
                     OnPropertyChanged(nameof(IsOff));
+                    OnPropertyChanged(nameof(IsActive));
                     OnPropertyChanged(nameof(OfficialTime));
                     OnPropertyChanged(nameof(OfficialTimeColor));
                     OnPropertyChanged(nameof(RankDisplay));
@@ -239,6 +240,8 @@ namespace boston_timing_system.Models
         public bool IsFinished => Status == LaneStatus.Finished;
         [JsonIgnore]
         public bool IsOff => Status == LaneStatus.OFF;
+        [JsonIgnore]
+        public bool IsActive => Status != LaneStatus.OFF && Status != LaneStatus.Empty;
 
         public TimeSpan? FinishTime
         {

@@ -142,6 +142,9 @@ namespace boston_timing_system.Models
         [JsonPropertyName("owsFinisherCount")]
         public int? OwsFinisherCount { get; set; }
 
+        [JsonPropertyName("owsTotalParticipants")]
+        public int? OwsTotalParticipants { get; set; }
+
         [JsonPropertyName("meetName")]
         public string? MeetName { get; set; }
 

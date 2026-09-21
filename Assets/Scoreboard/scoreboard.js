@@ -27,6 +27,7 @@ class ScoreboardController {
     // Lanes (0-9 / 1-10)
     this.lanes = [];
     this.owsRecords = [];
+    this.owsTotalParticipants = 0;
 
     // Cached DOM elements
     this.dom = {
@@ -67,10 +68,10 @@ class ScoreboardController {
         swimmerName: '',
         club: '',
         splitTime: '',
-        formattedTime: '00:00.00',
+        formattedTime: '00.00.00',
         finishTimeMs: null,
         rank: null,
-        status: 'Ready'
+        status: 'OFF'
       });
     }
     this.renderPoolLanes();
@@ -248,8 +249,9 @@ class ScoreboardController {
         this.isRunning = false;
         this.raceStatus = 'Finished';
         this.updateStatusTag('FINISHED', 'finished');
-        if (msg.elapsedFormatted) {
-          this.updateMasterDisplay(msg.elapsedFormatted);
+        const stopTime = msg.elapsedTime || msg.elapsedFormatted;
+        if (stopTime) {
+          this.updateMasterDisplay(stopTime);
         }
         break;
 
@@ -257,18 +259,32 @@ class ScoreboardController {
         this.isRunning = false;
         this.raceStatus = 'Ready';
         this.elapsedMs = 0;
+        this.lastTickTime = 0;
         this.updateStatusTag('READY', '');
-        this.updateMasterDisplay('00:00.00');
-        this.resetLanesTimes();
+        this.updateMasterDisplay('00.00.00');
+        if (msg.lanes && Array.isArray(msg.lanes)) {
+          this.applyStateSync(msg);
+        } else {
+          this.resetLanesTimes();
+          this.send({ action: 'SYNC_REQUEST' });
+        }
         break;
 
       case 'TICK':
+      case 'CLOCK_TICK':
         if (msg.elapsedMs !== undefined) {
           this.elapsedMs = msg.elapsedMs;
           this.lastTickTime = performance.now();
+        } else if (msg.elapsedTime || msg.elapsedFormatted) {
+          const tStr = msg.elapsedTime || msg.elapsedFormatted;
+          const parsedMs = this.parseTimeMs(tStr);
+          if (parsedMs >= 0) {
+            this.elapsedMs = parsedMs;
+            this.lastTickTime = performance.now();
+          }
         }
-        if (msg.elapsedFormatted) {
-          this.updateMasterDisplay(msg.elapsedFormatted);
+        if (msg.elapsedTime || msg.elapsedFormatted) {
+          this.updateMasterDisplay(msg.elapsedTime || msg.elapsedFormatted);
         }
         break;
 
@@ -294,6 +310,9 @@ class ScoreboardController {
       case 'OWS_FINISH_RECORDED':
       case 'OWS_RECORD_UPDATED':
       case 'OWS_RECORD_DELETED':
+        if (msg.owsTotalParticipants !== undefined && msg.owsTotalParticipants !== null) {
+          this.owsTotalParticipants = msg.owsTotalParticipants;
+        }
         if (msg.owsRecords) {
           this.owsRecords = msg.owsRecords;
           this.renderOwsView();
@@ -336,8 +355,20 @@ class ScoreboardController {
       }
     }
 
-    if (state.elapsedFormatted) {
-      this.updateMasterDisplay(state.elapsedFormatted);
+    const elapsedStr = state.elapsedTime || state.elapsedFormatted;
+    if (elapsedStr) {
+      this.updateMasterDisplay(elapsedStr);
+      const parsed = this.parseTimeMs(elapsedStr);
+      if (parsed >= 0) {
+        this.elapsedMs = parsed;
+        if (this.isRunning) {
+          this.lastTickTime = performance.now();
+        }
+      }
+    } else if (!this.isRunning && this.raceStatus !== 'Finished') {
+      this.updateMasterDisplay('00.00.00');
+      this.elapsedMs = 0;
+      this.lastTickTime = 0;
     }
 
     if (state.lanes && Array.isArray(state.lanes)) {
@@ -346,12 +377,16 @@ class ScoreboardController {
         swimmerName: l.swimmerName || '',
         club: l.club || '',
         splitTime: l.splitTime || '',
-        formattedTime: l.formattedTime || '00:00.00',
+        formattedTime: l.formattedTime || '00.00.00',
         rank: l.rank,
-        status: l.status || 'Ready'
+        status: l.status || (l.swimmerName ? 'Ready' : 'OFF')
       }));
       this.lanes.sort((a, b) => a.laneNumber - b.laneNumber);
       this.renderPoolLanes();
+    }
+
+    if (state.owsTotalParticipants !== undefined && state.owsTotalParticipants !== null) {
+      this.owsTotalParticipants = state.owsTotalParticipants;
     }
 
     if (state.owsRecords && Array.isArray(state.owsRecords)) {
@@ -406,27 +441,46 @@ class ScoreboardController {
     const container = this.dom.laneRowsContainer;
     container.innerHTML = '';
 
-    this.lanes.forEach((lane) => {
+    // Hanya tampilkan peserta yang aktif (bukan OFF, bukan Empty, dan memiliki nama/data atau aktif)
+    const activeLanes = this.lanes.filter((lane) => {
+      const statusUpper = (lane.status || '').toUpperCase();
+      if (statusUpper === 'OFF' || statusUpper === 'EMPTY') return false;
+      const hasSwimmer = Boolean(lane.swimmerName && lane.swimmerName.trim() !== '');
+      // Jika swimmerName kosong dan statusnya bukan status kompetisi aktif (Ready/Running/Finished dll), sembunyikan
+      if (!hasSwimmer && statusUpper === '') return false;
+      return true;
+    });
+
+    activeLanes.forEach((lane) => {
       const row = document.createElement('div');
-      row.className = 'lane-row ' + lane.status.toLowerCase();
+      row.className = 'lane-row ' + (lane.status || '').toLowerCase();
       row.id = 'laneRow-' + lane.laneNumber;
+
+      const isPenalty = ['DQ', 'DNF', 'DNS'].includes(lane.status);
 
       let rankHtml = '<div class=rank-pill>-</div>';
       if (lane.status === 'Finished' && lane.rank) {
         const medalClass = lane.rank === 1 ? 'rank-1' : lane.rank === 2 ? 'rank-2' : lane.rank === 3 ? 'rank-3' : '';
         rankHtml = '<div class=rank-pill ' + medalClass + '>' + lane.rank + '</div>';
-      } else if (['DQ', 'DNF', 'DNS'].includes(lane.status)) {
-        rankHtml = '<div class=penalty-pill>' + lane.status + '</div>';
+      } else if (isPenalty) {
+        rankHtml = '<div class=rank-pill>-</div>';
       }
 
-      const swimmerDisplay = lane.swimmerName || '<span style=color: #475569; font-weight: normal;>Lane ' + lane.laneNumber + '</span>';
+      // If disqualified or penalized, show penalty status in finish time column
+      let timeHtml = lane.formattedTime || '00:00.00';
+      if (isPenalty) {
+        timeHtml = '<div class="penalty-pill penalty-' + lane.status.toLowerCase() + '">' + lane.status + '</div>';
+      }
+
+      // Khusus lane 10 teksnya diganti jadi 0
+      const laneDisplayNumber = (lane.laneNumber === 10 || lane.laneNumber === 0) ? '0' : lane.laneNumber;
+      const swimmerDisplay = lane.swimmerName || ('<span style=color: #475569; font-weight: normal;>Lane ' + laneDisplayNumber + '</span>');
 
       row.innerHTML = 
-        '<div class=col col-lane><div class=lane-badge>' + lane.laneNumber + '</div></div>' +
+        '<div class=col col-lane><div class=lane-badge>' + laneDisplayNumber + '</div></div>' +
         '<div class=col col-swimmer>' + swimmerDisplay + '</div>' +
         '<div class=col col-club>' + (lane.club || '-') + '</div>' +
-        '<div class=col col-split>' + (lane.splitTime || '-') + '</div>' +
-        '<div class=col col-time>' + (lane.formattedTime || '00:00.00') + '</div>' +
+        '<div class=col col-time>' + timeHtml + '</div>' +
         '<div class=col col-rank>' + rankHtml + '</div>';
 
       container.appendChild(row);
@@ -444,30 +498,42 @@ class ScoreboardController {
 
     records.forEach((rec, idx) => {
       const isFin = rec.status === 'Finished' || (!rec.status && rec.formattedTime);
+      const isPenalty = ['DQ', 'DNF', 'DNS'].includes(rec.status);
       if (isFin) finishedCount++;
-      if (['DQ', 'DNF', 'DNS'].includes(rec.status)) penalizedCount++;
+      if (isPenalty) penalizedCount++;
 
       const row = document.createElement('div');
-      row.className = 'ows-row ' + (isFin ? 'finished' : '');
+      row.className = 'ows-row ' + (isFin ? 'finished' : (isPenalty ? rec.status.toLowerCase() : ''));
 
       const medalClass = rec.rank === 1 ? 'rank-1' : rec.rank === 2 ? 'rank-2' : rec.rank === 3 ? 'rank-3' : '';
-      const rankHtml = rec.rank ? '<div class=rank-pill ' + medalClass + '>' + rec.rank + '</div>' : '<div class=rank-pill>-</div>';
+      const rankHtml = (!isPenalty && rec.rank) ? '<div class=rank-pill ' + medalClass + '>' + rec.rank + '</div>' : '<div class=rank-pill>-</div>';
       const swimmerDisplay = rec.swimmerName || ('Athlete ' + (rec.bibNumber || (idx + 1)));
+
+      let timeHtml = rec.formattedTime || '00:00.00';
+      // Gunakan data gapTime langsung dari server (misal "+00.05.16" atau "—")
+      let gapDisplay = rec.gapTime || rec.gap || (rec.rank === 1 ? '+00.00.00' : '-');
+
+      if (isPenalty) {
+        timeHtml = '<div class="penalty-pill penalty-' + rec.status.toLowerCase() + '">' + rec.status + '</div>';
+        gapDisplay = rec.gapTime || '-';
+      }
 
       row.innerHTML = 
         '<div class=col col-rank>' + rankHtml + '</div>' +
         '<div class=col col-bib><span class=bib-badge>' + (rec.bibNumber || '-') + '</span></div>' +
         '<div class=col col-swimmer>' + swimmerDisplay + '</div>' +
         '<div class=col col-club>' + (rec.club || '-') + '</div>' +
-        '<div class=col col-gap>' + (rec.gap || (rec.rank === 1 ? 'LEADER' : '-')) + '</div>' +
-        '<div class=col col-time>' + (rec.formattedTime || '00:00.00') + '</div>';
+        '<div class=col col-time>' + timeHtml + '</div>' +
+        '<div class=col col-gap>' + gapDisplay + '</div>';
 
       container.appendChild(row);
     });
 
-    if (this.dom.owsTotal) this.dom.owsTotal.textContent = records.length;
+    const totalParticipants = Math.max(records.length, this.owsTotalParticipants || 0);
+
+    if (this.dom.owsTotal) this.dom.owsTotal.textContent = totalParticipants;
     if (this.dom.owsFinished) this.dom.owsFinished.textContent = finishedCount;
-    if (this.dom.owsOnCourse) this.dom.owsOnCourse.textContent = Math.max(0, records.length - finishedCount - penalizedCount);
+    if (this.dom.owsOnCourse) this.dom.owsOnCourse.textContent = Math.max(0, totalParticipants - finishedCount - penalizedCount);
     if (this.dom.owsPenalized) this.dom.owsPenalized.textContent = penalizedCount;
   }
 
@@ -512,18 +578,43 @@ class ScoreboardController {
       l.formattedTime = '00:00.00';
       l.splitTime = '';
       l.rank = null;
-      l.status = 'Ready';
+      const statusUpper = (l.status || '').toUpperCase();
+      if (statusUpper !== 'OFF' && statusUpper !== 'EMPTY') {
+        l.status = (l.swimmerName && l.swimmerName.trim() !== '') ? 'Ready' : 'OFF';
+      }
     });
     this.renderPoolLanes();
+    if (this.timingMode === 'OpenWater') {
+      this.owsRecords = [];
+      this.renderOwsView();
+    }
+  }
+
+  parseTimeMs(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return -1;
+    // Mendukung format "mm:ss.ff" ataupun "mm.ss.ff"
+    const cleaned = timeStr.trim().replace(/:/g, '.');
+    const parts = cleaned.split('.');
+    if (parts.length === 3) {
+      const minutes = parseInt(parts[0], 10) || 0;
+      const seconds = parseInt(parts[1], 10) || 0;
+      const hundredths = parseInt(parts[2], 10) || 0;
+      return (minutes * 60 + seconds) * 1000 + (hundredths * 10);
+    } else if (parts.length === 2) {
+      const seconds = parseInt(parts[0], 10) || 0;
+      const hundredths = parseInt(parts[1], 10) || 0;
+      return (seconds * 1000) + (hundredths * 10);
+    }
+    return -1;
   }
 
   formatTime(ms) {
-    if (!ms || ms < 0) return '00:00.00';
+    if (!ms || ms < 0) return '00.00.00';
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     const hundredths = Math.floor((ms % 1000) / 10);
-    return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0') + '.' + String(hundredths).padStart(2, '0');
+    return String(minutes).padStart(2, '0') + '.' + String(seconds).padStart(2, '0') + '.' + String(hundredths).padStart(2, '0');
   }
 }
 

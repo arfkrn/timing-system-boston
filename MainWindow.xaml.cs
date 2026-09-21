@@ -724,18 +724,15 @@ namespace boston_timing_system
 
             if (_engine.IsOpenWaterMode)
             {
-                txtMobileRole2.Text = "OWS REFEREE";
-                bool hasReferee = _wsServer.IsOwsRefereeConnected || _wsServer.RefereesCount > 0;
-                double latency = _wsServer.OwsRefereeLatencyMs > 0 ? _wsServer.OwsRefereeLatencyMs : _wsServer.ChiefLatencyMs;
-                UpdateSignalBars(barChief1, barChief2, barChief3, barChief4, hasReferee, latency);
-                UpdateFooterLatencyLabel(txtChiefLatency, hasReferee, latency);
+                bool itFinish = _wsServer.RefereesCount > 0;
+                UpdateSignalBars(barItFinish1, barItFinish2, barItFinish3, barItFinish4, itFinish, _wsServer.OwsRefereeLatencyMs);
+                UpdateFooterLatencyLabel(txtItFinishLatency, itFinish, _wsServer.OwsRefereeLatencyMs);
             }
             else
             {
-                txtMobileRole2.Text = "CHIEF";
-                bool hasChief = _wsServer.ChiefsCount > 0;
-                UpdateSignalBars(barChief1, barChief2, barChief3, barChief4, hasChief, _wsServer.ChiefLatencyMs);
-                UpdateFooterLatencyLabel(txtChiefLatency, hasChief, _wsServer.ChiefLatencyMs);
+                bool hasTimerKeeper = _wsServer.ChiefsCount > 0;
+                UpdateSignalBars(barTimeKeeper1, barTimeKeeper2, barTimeKeeper3, barTimeKeeper4, hasTimerKeeper, _wsServer.ChiefLatencyMs);
+                UpdateFooterLatencyLabel(txtChiefLatency, hasTimerKeeper, _wsServer.ChiefLatencyMs);
             }
         }
 

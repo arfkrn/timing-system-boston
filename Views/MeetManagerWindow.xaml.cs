@@ -44,8 +44,8 @@ namespace boston_timing_system.Views
         {
             if (_timingMode == TimingMode.OpenWater)
             {
-                Title = "Open Water Swimming Meet & Data Manager";
-                txtMeetHeaderSubtitle.Text = "OWS Event Management";
+                Title = "Open Water Swimming & Data Manager";
+                txtMeetHeaderSubtitle.Text = "OWS Timing Management";
                 btnAddNewOwsSwimmer.Visibility = Visibility.Visible;
                 colLaneOrBib.Header = "BIB";
                 colLaneOrBib.IsReadOnly = false;
@@ -54,7 +54,7 @@ namespace boston_timing_system.Views
             else
             {
                 Title = "Swimming Meet & Data Manager";
-                txtMeetHeaderSubtitle.Text = "Pool Event Management";
+                txtMeetHeaderSubtitle.Text = "SC Timing Management";
                 btnAddNewOwsSwimmer.Visibility = Visibility.Collapsed;
                 colLaneOrBib.Header = "LN";
                 colLaneOrBib.IsReadOnly = true;

@@ -524,19 +524,10 @@
                                                     </MultiDataTrigger.Conditions>
                                                     <Setter Property="Background" Value="#DCFCE7" />
                                                 </MultiDataTrigger>
-                                                <!-- STATUS OFF: Disabled grey appearance -->
-                                                <DataTrigger Binding="{Binding IsOff}" Value="True">
-                                                    <Setter Property="Background" Value="#F1F5F9" />
-                                                    <Setter Property="Opacity" Value="0.45" />
+                                                <!-- Hide lanes that are OFF or Empty -->
+                                                <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
                                                 </DataTrigger>
-                                                <MultiDataTrigger>
-                                                    <MultiDataTrigger.Conditions>
-                                                        <Condition Binding="{Binding IsOff}" Value="True" />
-                                                        <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsMouseOver}" Value="True" />
-                                                    </MultiDataTrigger.Conditions>
-                                                    <Setter Property="Background" Value="#E2E8F0" />
-                                                    <Setter Property="Opacity" Value="0.55" />
-                                                </MultiDataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </Border.Style>
@@ -1285,6 +1276,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />  <!-- Role label -->
@@ -1305,18 +1297,31 @@
                                    VerticalAlignment="Center" Margin="0,0,0,4"
                                    ToolTip="One-way estimated latency to Starter device"/>
 
-                        <!-- CHIEF / WASIT FINIS row -->
-                        <TextBlock Grid.Row="1" Grid.Column="0" x:Name="txtMobileRole2" Text="CHIEF" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
-                            <Rectangle x:Name="barChief1" Width="2.5" Height="4" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
-                            <Rectangle x:Name="barChief2" Width="2.5" Height="7" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
-                            <Rectangle x:Name="barChief3" Width="2.5" Height="10" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
-                            <Rectangle x:Name="barChief4" Width="2.5" Height="13" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" VerticalAlignment="Bottom"/>
+                        <!-- CHIEF row -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="TIME KEEPER" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,8,4" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,4">
+                            <Rectangle x:Name="barTimeKeeper1" Width="2.5" Height="4" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barTimeKeeper2" Width="2.5" Height="7" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barTimeKeeper3" Width="2.5" Height="10" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barTimeKeeper4" Width="2.5" Height="13" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" VerticalAlignment="Bottom"/>
                         </StackPanel>
                         <TextBlock x:Name="txtChiefLatency" Grid.Row="1" Grid.Column="2"
                                    Text="--" FontSize="9.5" FontWeight="SemiBold" Foreground="#94A3B8"
                                    VerticalAlignment="Center"
                                    ToolTip="One-way estimated latency to Chief/Referee device"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="IT FINISH" FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
+                            <Rectangle x:Name="barItFinish1" Width="2.5" Height="4" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barItFinish2" Width="2.5" Height="7" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barItFinish3" Width="2.5" Height="10" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" Margin="0,0,1.5,0" VerticalAlignment="Bottom"/>
+                            <Rectangle x:Name="barItFinish4" Width="2.5" Height="13" Fill="#94A3B8" RadiusX="0.5" RadiusY="0.5" VerticalAlignment="Bottom"/>
+                        </StackPanel>
+                        <TextBlock x:Name="txtItFinishLatency" Grid.Row="2" Grid.Column="2"
+                                   Text="--" FontSize="9.5" FontWeight="SemiBold" Foreground="#94A3B8"
+                                   VerticalAlignment="Center"
+                                   ToolTip="One-way estimated latency to IT Finish device"/>
+                        
                     </Grid>
                 </StackPanel>
 

@@ -307,7 +307,7 @@ namespace boston_timing_system.Services
             _clients.TryAdd(socket, client);
 
             UpdateClientMetrics();
-            Log($"Device connected: {client.IpAddress}";
+            Log($"Device connected: {client.IpAddress}");
 
             // Send current state synchronization immediately upon connecting
             SendToSocket(socket, CreateStateSyncEvent());
